@@ -12,14 +12,14 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 ## Status
 
 - **Current milestone:** M2 — Agente real + Vercel Sandbox
-- **Last updated:** 2026-04-21
-- **Overall:** 28 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Last updated:** 2026-04-22
+- **Overall:** 29 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
-| M2 — Agente real + Vercel Sandbox | 6 | 19 |
+| M2 — Agente real + Vercel Sandbox | 7 | 19 |
 | M3 — RAG + integrações reais | 0 | 12 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
@@ -63,7 +63,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T04](tasks/m2-agent-sandbox/M2-T04-resolve-tools-bridge.md) — resolveTools bridge → AI SDK
 - [x] [M2-T05](tasks/m2-agent-sandbox/M2-T05-skills-invoke-action.md) — `internal.skills.invoke` action
 - [x] [M2-T06](tasks/m2-agent-sandbox/M2-T06-skill-http-fetch.md) — Skill `http.fetch` + SSRF guard
-- [ ] [M2-T07](tasks/m2-agent-sandbox/M2-T07-domain-memory.md) — Domain `memory` + scopes
+- [x] [M2-T07](tasks/m2-agent-sandbox/M2-T07-domain-memory.md) — Domain `memory` + scopes
 - [ ] [M2-T08](tasks/m2-agent-sandbox/M2-T08-skill-memory-search-stub.md) — Skill `memory.search` stub
 - [ ] [M2-T09](tasks/m2-agent-sandbox/M2-T09-system-prompt-builder.md) — System prompt builder
 - [ ] [M2-T10](tasks/m2-agent-sandbox/M2-T10-domain-sandboxes.md) — Domain `sandboxes`
@@ -117,6 +117,8 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - **M0-T05 spike resultado**: `@djpanda/convex-tenants@0.1.6` + `@djpanda/convex-authz@0.1.7` integram bem com `@convex-dev/auth@0.0.91`. Peer-dep exige authz `0.1.7` (não `2.x`). API do `makeTenantsAPI` não tem `createInvitation`/`declineInvitation`/`revokeInvitation` — usa `inviteMember`/`cancelInvitation`/`resendInvitation`/`acceptInvitation`. Stability: OK pra seguir. Smoke test de E2E multi-tenant (user A cria org, user B não vê) **deferido pra M1-T01** quando teremos mutations próprias chamando `checkPermission`.
 
 ## Decisões tomadas durante execução
+
+- **M2-T07 (2026-04-22)** — Domain `memory` com scopes `org`/`agent`/`thread`. Revisitado vs. alternativas: (a) **agent component's `memories` table** (v0.6.1) existe no schema interno mas **não expõe API client pública** (`grep memor dist/client/*.d.ts` = zero) → não dá pra consumir; (b) **`@djpanda/convex-tenants`** é authz-only (orgs/members/teams/invitations), zero conceito de agent/thread → camada complementar, não substituta. Nossa adição resolve 3 coisas que nenhum dos dois cobre: scope `"org"` (fato compartilhado entre agents da org), `alwaysOn` (pin no system prompt — recall semântico ≠ pin), governance (UI admin + authz gradado). Schema tem `embedding?: number[]` + `vectorIndex("by_embedding", {dims:1536, filterFields:["orgId"]})` nativo — M3-T02 preenche via `embedMany` do `@convex-dev/agent`; M3-T04 consome via `ctx.vectorSearch` com filter `orgId`. Authz gradada: `org`/`agent` scope = admin+, `thread` scope = member+ — user pode "lembrar preferências pessoais" no thread sem ser admin. Invariantes de scope (ex: `org` não pode ter `agentId`) rejeitadas explicitamente na mutation porque o validator permite optional em qualquer scope; mudanças de scope em update são bloqueadas (`"Cannot change scope"`) — trocar scope silenciosamente moveria o row pra uma fronteira authz diferente. `listForAgent`/`listForThread`/`listAlwaysOn` splitted em 3 queries paralelas no `by_org_scope` + filter em memória (bounded por `MAX_MEMORIES_PER_SCOPE=500`) — órfão de join entre `by_org_scope` + agentId filter, mas volume baixo por org torna aceitável. Query `listAlwaysOn` user-facing (member-level, pra /agents/[id]/edit preview) + `listAlwaysOnInternal` (M2-T09 prompt builder chama via `ctx.runQuery` sem identity hop — events schedulados). `updatedBy` persistido como `Id<"users">` diretamente — `requireOrgRole` retorna userId como string opaca, então re-derivamos via `getAuthUserId(ctx)` pra ter o tipo correto. Tests: 11 model + 5 repo + 10 upsert + 4 delete = 30 novos; suite total 314.
 
 - **M2-T05 (2026-04-21)** — `skills.invoke` dispatcher real, substituindo o stub de M2-T04. Pipeline: (1) catalog lookup → `Unknown tool` se miss; (2) **confirmation gate** — declarative write OR heurística de args perigosos (`rm -rf`, `sudo`, `curl|sh`, fork bomb, `mkfs`, `dd of=/dev/`) → `{requireConfirmation, preview}` **sem invocar impl** (wiring humano em M3-T11); (3) impl registry lookup → `Unknown tool` se não registrado; (4) dispatch dentro de `AbortController` fresh (upstream cancellation plumbing pra futuro); (5) retorna MCP-style `{content, isError}` ou preview. **Dispatcher nunca lança** — AI SDK retry de M2-T04 só serve pra falhas de infra (runAction), erros de impl viram data que o modelo lê e recupera. Helpers em `_libs/`: `confirmationHeuristics.hasDangerousArgPattern`, `errorFormatting.{redactSecrets,truncateStack,formatImplError,formatSuccess,formatUnknownSkill}`, `skillImpls.{registerSkill,getSkillImpl,_resetSkillRegistry}` (registry side-effectful; `_stubs.ts` registra todas as 6 skills com throw documentado por task alvo). Redaction cobre `sk-*`, `xox[abrps]-*`, `Bearer`, `"password"/"token"/"authorization"` JSON fields — defense-in-depth, não substitui não-logar. Audit log: `console.log(JSON.stringify({type:"skills.invoke", skillKey, status, durationMs, orgId, agentId, threadId, toolCallId, ...}))` por call — estruturado pra Convex log search; tabela durável fica pra M4-T08. **Desvio vs spec**: path é `convex/skills/actions/invoke.ts` (não `adapters/`) — segue convenção do repo (slack/actions/ vs slack/adapters/ onde adapters = HTTP/DB interfaces). Suite total 261 (28 novos: 4 registry + 9 heurística + 9 redaction + 6 dispatcher).
 
