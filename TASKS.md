@@ -13,13 +13,13 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 - **Current milestone:** M2 — Agente real + Vercel Sandbox
 - **Last updated:** 2026-04-21
-- **Overall:** 27 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Overall:** 28 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
-| M2 — Agente real + Vercel Sandbox | 5 | 19 |
+| M2 — Agente real + Vercel Sandbox | 6 | 19 |
 | M3 — RAG + integrações reais | 0 | 12 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
@@ -62,7 +62,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T03](tasks/m2-agent-sandbox/M2-T03-domain-agent-skills.md) — Domain `agentSkills` bindings
 - [x] [M2-T04](tasks/m2-agent-sandbox/M2-T04-resolve-tools-bridge.md) — resolveTools bridge → AI SDK
 - [x] [M2-T05](tasks/m2-agent-sandbox/M2-T05-skills-invoke-action.md) — `internal.skills.invoke` action
-- [ ] [M2-T06](tasks/m2-agent-sandbox/M2-T06-skill-http-fetch.md) — Skill `http.fetch` + SSRF guard
+- [x] [M2-T06](tasks/m2-agent-sandbox/M2-T06-skill-http-fetch.md) — Skill `http.fetch` + SSRF guard
 - [ ] [M2-T07](tasks/m2-agent-sandbox/M2-T07-domain-memory.md) — Domain `memory` + scopes
 - [ ] [M2-T08](tasks/m2-agent-sandbox/M2-T08-skill-memory-search-stub.md) — Skill `memory.search` stub
 - [ ] [M2-T09](tasks/m2-agent-sandbox/M2-T09-system-prompt-builder.md) — System prompt builder
