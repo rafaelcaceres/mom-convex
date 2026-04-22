@@ -27,8 +27,8 @@ const httpFetchArgs = z.object({
 
 const memorySearchArgs = z.object({
 	query: z.string(),
-	scope: z.enum(["user", "thread", "org"]).optional(),
-	limit: z.number().int().positive().max(20).optional(),
+	scope: z.enum(["memory", "history", "all"]).optional(),
+	limit: z.number().int().positive().max(50).optional(),
 });
 
 const sandboxBashArgs = z.object({

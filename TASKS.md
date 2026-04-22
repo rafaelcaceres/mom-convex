@@ -13,13 +13,13 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 - **Current milestone:** M2 — Agente real + Vercel Sandbox
 - **Last updated:** 2026-04-22
-- **Overall:** 29 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Overall:** 30 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
-| M2 — Agente real + Vercel Sandbox | 7 | 19 |
+| M2 — Agente real + Vercel Sandbox | 8 | 19 |
 | M3 — RAG + integrações reais | 0 | 12 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
@@ -64,7 +64,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T05](tasks/m2-agent-sandbox/M2-T05-skills-invoke-action.md) — `internal.skills.invoke` action
 - [x] [M2-T06](tasks/m2-agent-sandbox/M2-T06-skill-http-fetch.md) — Skill `http.fetch` + SSRF guard
 - [x] [M2-T07](tasks/m2-agent-sandbox/M2-T07-domain-memory.md) — Domain `memory` + scopes
-- [ ] [M2-T08](tasks/m2-agent-sandbox/M2-T08-skill-memory-search-stub.md) — Skill `memory.search` stub
+- [x] [M2-T08](tasks/m2-agent-sandbox/M2-T08-skill-memory-search-stub.md) — Skill `memory.search` stub
 - [ ] [M2-T09](tasks/m2-agent-sandbox/M2-T09-system-prompt-builder.md) — System prompt builder
 - [ ] [M2-T10](tasks/m2-agent-sandbox/M2-T10-domain-sandboxes.md) — Domain `sandboxes`
 - [ ] [M2-T11](tasks/m2-agent-sandbox/M2-T11-vercel-sandbox-wrapper.md) — Vercel Sandbox wrapper
@@ -111,12 +111,18 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 **M4 done gate:** cron periódico dispara em produção; multi-agent route por canal; rate limit ativa; dashboard coerente.
 
+## Follow-ups / backlog (fora da contagem de milestone)
+
+- [ ] [F-01](tasks/followups/F-01-catalog-sync-utility.md) — Catalog sync utility (`resyncSkillCatalog`) — surfaced por M2-T08 quando o zod schema de `memory.search` mudou e o `skillCatalog` ficou stale silenciosamente.
+
 ## Tasks bloqueadas / riscos ativos
 
 - **Live auth/tenancy validation OK (2026-04-19)** — login real via Google + fluxo `/onboarding` → `/chat` validados manualmente com echo reactive funcionando. OrganizationSwitcher UI ainda não foi exercitada (chega em M1-T14 ou depois).
 - **M0-T05 spike resultado**: `@djpanda/convex-tenants@0.1.6` + `@djpanda/convex-authz@0.1.7` integram bem com `@convex-dev/auth@0.0.91`. Peer-dep exige authz `0.1.7` (não `2.x`). API do `makeTenantsAPI` não tem `createInvitation`/`declineInvitation`/`revokeInvitation` — usa `inviteMember`/`cancelInvitation`/`resendInvitation`/`acceptInvitation`. Stability: OK pra seguir. Smoke test de E2E multi-tenant (user A cria org, user B não vê) **deferido pra M1-T01** quando teremos mutations próprias chamando `checkPermission`.
 
 ## Decisões tomadas durante execução
+
+- **M2-T08 (2026-04-22)** — Skill `memory.search` stub. Zod `{query, scope: "memory"|"history"|"all", limit: number ≤50, default 10}`. `scope` é **source-of-search** (memory-table vs message-history vs union), não o scope da row de memória — nomeação deliberada pra não conflitar com `MemoryScope` do domínio (`"org"|"agent"|"thread"`). Impl substring case-insensitive sobre `listAlwaysOnInternal` (mesma query que o system-prompt builder consumirá em M2-T09) — só alwaysOn porque sem embeddings (M3-T02) não dá pra fazer retrieval semântico sobre as demais memórias, e expor keyword match contra todo o pool seria falso positivo garantido (memórias não-pin tendem a ser "fatos esquecíveis" filtrados por relevância, não keyword). `scope:"history"` retorna `[]` com comentário apontando M3-T04 — preserva a shape do enum estável pra não invalidar agent-memory ao ligar. Seed de `_seeds.ts` corrigido (era `enum(["user","thread","org"])` com `max(20)` — herança de um draft antigo, nunca bateu com nada). **Smoke revelou footgun**: `seedSkillCatalog` é idempotente-só, então editar zod em código deixa a row antiga no DB; `resolveTools` advertisa schema stale pro modelo, este manda valor fora do novo enum, e `MemorySearchArgs.parse()` rejeita com `invalid_value`. Workaround: delete manual + re-seed. Fix durável (upsert-on-diff) avaliado e rejeitado em-scope — comparação por string de JSON frágil (depende de zod serialization ordering), auto-upgrade mascara migrações de `sideEffect` silenciosas, e M2-T08 não é lifecycle de catálogo. Criado follow-up `F-01` com o plano completo (mutation dedicada `resyncSkillCatalog`, compare via parse+deep-equal, mantém `seedCatalog` idempotente pra predictability em dev local). 8 testes novos (impl) + update em `_seeds.ts` sem mudar `_seeds.test.ts` (só valida JSON round-trip); suite total 322.
 
 - **M2-T07 (2026-04-22)** — Domain `memory` com scopes `org`/`agent`/`thread`. Revisitado vs. alternativas: (a) **agent component's `memories` table** (v0.6.1) existe no schema interno mas **não expõe API client pública** (`grep memor dist/client/*.d.ts` = zero) → não dá pra consumir; (b) **`@djpanda/convex-tenants`** é authz-only (orgs/members/teams/invitations), zero conceito de agent/thread → camada complementar, não substituta. Nossa adição resolve 3 coisas que nenhum dos dois cobre: scope `"org"` (fato compartilhado entre agents da org), `alwaysOn` (pin no system prompt — recall semântico ≠ pin), governance (UI admin + authz gradado). Schema tem `embedding?: number[]` + `vectorIndex("by_embedding", {dims:1536, filterFields:["orgId"]})` nativo — M3-T02 preenche via `embedMany` do `@convex-dev/agent`; M3-T04 consome via `ctx.vectorSearch` com filter `orgId`. Authz gradada: `org`/`agent` scope = admin+, `thread` scope = member+ — user pode "lembrar preferências pessoais" no thread sem ser admin. Invariantes de scope (ex: `org` não pode ter `agentId`) rejeitadas explicitamente na mutation porque o validator permite optional em qualquer scope; mudanças de scope em update são bloqueadas (`"Cannot change scope"`) — trocar scope silenciosamente moveria o row pra uma fronteira authz diferente. `listForAgent`/`listForThread`/`listAlwaysOn` splitted em 3 queries paralelas no `by_org_scope` + filter em memória (bounded por `MAX_MEMORIES_PER_SCOPE=500`) — órfão de join entre `by_org_scope` + agentId filter, mas volume baixo por org torna aceitável. Query `listAlwaysOn` user-facing (member-level, pra /agents/[id]/edit preview) + `listAlwaysOnInternal` (M2-T09 prompt builder chama via `ctx.runQuery` sem identity hop — events schedulados). `updatedBy` persistido como `Id<"users">` diretamente — `requireOrgRole` retorna userId como string opaca, então re-derivamos via `getAuthUserId(ctx)` pra ter o tipo correto. Tests: 11 model + 5 repo + 10 upsert + 4 delete = 30 novos; suite total 314.
 

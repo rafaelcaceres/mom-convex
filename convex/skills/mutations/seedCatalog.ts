@@ -4,9 +4,9 @@ import { seedSkillCatalog } from "../_seeds";
 
 /**
  * Populate the `skillCatalog` table with built-in skills. Idempotent — safe
- * to run after pulling new skill definitions. Trigger from the dashboard
- * with `convex run skills:mutations:seedCatalog:default` (or the UI in a
- * future task).
+ * to run after pulling new skill definitions. Trigger with
+ * `npx convex run skills/mutations/seedCatalog` (Convex CLI uses `/` for
+ * module paths, not `:`). A future UI task will wrap this.
  */
 const seedCatalog = internalMutation({
 	args: {},

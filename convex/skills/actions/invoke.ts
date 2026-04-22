@@ -16,6 +16,7 @@ import { getSkillImpl } from "../_libs/skillImpls";
 import "../impls/_stubs";
 // Real impls registered after stubs — last registration wins.
 import "../impls/httpFetch";
+import "../impls/memorySearch";
 
 /**
  * Central dispatcher for every tool call. Pipeline:

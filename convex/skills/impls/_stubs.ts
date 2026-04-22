@@ -11,10 +11,6 @@ import { registerSkill } from "../_libs/skillImpls";
  * Last registration wins, so the new file overrides whatever is here.
  */
 
-registerSkill("memory.search", async () => {
-	throw new Error("memory.search impl lands in M2-T08");
-});
-
 registerSkill("sandbox.bash", async () => {
 	throw new Error("sandbox.bash impl lands in M2-T12");
 });
