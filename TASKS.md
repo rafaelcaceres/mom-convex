@@ -57,7 +57,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 ## M2 — Agente real + Vercel Sandbox
 
-- [~] [M2-T01](tasks/m2-agent-sandbox/M2-T01-agent-component.md) — @convex-dev/agent + agentFactory + **real handleIncoming** *(escopo expandido 2026-04-20 — factory+bridge done; falta swap echo→streamText real)*
+- [x] [M2-T01](tasks/m2-agent-sandbox/M2-T01-agent-component.md) — @convex-dev/agent + agentFactory + **real handleIncoming**
 - [x] [M2-T02](tasks/m2-agent-sandbox/M2-T02-domain-skill-catalog.md) — Domain `skillCatalog`
 - [x] [M2-T03](tasks/m2-agent-sandbox/M2-T03-domain-agent-skills.md) — Domain `agentSkills` bindings
 - [x] [M2-T04](tasks/m2-agent-sandbox/M2-T04-resolve-tools-bridge.md) — resolveTools bridge → AI SDK
