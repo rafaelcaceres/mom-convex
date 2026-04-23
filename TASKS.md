@@ -12,14 +12,14 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 ## Status
 
 - **Current milestone:** M2 — Agente real + Vercel Sandbox
-- **Last updated:** 2026-04-22
-- **Overall:** 30 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Last updated:** 2026-04-23
+- **Overall:** 31 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
-| M2 — Agente real + Vercel Sandbox | 8 | 19 |
+| M2 — Agente real + Vercel Sandbox | 9 | 19 |
 | M3 — RAG + integrações reais | 0 | 12 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
@@ -65,7 +65,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T06](tasks/m2-agent-sandbox/M2-T06-skill-http-fetch.md) — Skill `http.fetch` + SSRF guard
 - [x] [M2-T07](tasks/m2-agent-sandbox/M2-T07-domain-memory.md) — Domain `memory` + scopes
 - [x] [M2-T08](tasks/m2-agent-sandbox/M2-T08-skill-memory-search-stub.md) — Skill `memory.search` stub
-- [ ] [M2-T09](tasks/m2-agent-sandbox/M2-T09-system-prompt-builder.md) — System prompt builder
+- [x] [M2-T09](tasks/m2-agent-sandbox/M2-T09-system-prompt-builder.md) — System prompt builder
 - [ ] [M2-T10](tasks/m2-agent-sandbox/M2-T10-domain-sandboxes.md) — Domain `sandboxes`
 - [ ] [M2-T11](tasks/m2-agent-sandbox/M2-T11-vercel-sandbox-wrapper.md) — Vercel Sandbox wrapper
 - [ ] [M2-T12](tasks/m2-agent-sandbox/M2-T12-skills-sandbox.md) — Skills sandbox.* (bash/read/write/browse)
@@ -121,6 +121,8 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - **M0-T05 spike resultado**: `@djpanda/convex-tenants@0.1.6` + `@djpanda/convex-authz@0.1.7` integram bem com `@convex-dev/auth@0.0.91`. Peer-dep exige authz `0.1.7` (não `2.x`). API do `makeTenantsAPI` não tem `createInvitation`/`declineInvitation`/`revokeInvitation` — usa `inviteMember`/`cancelInvitation`/`resendInvitation`/`acceptInvitation`. Stability: OK pra seguir. Smoke test de E2E multi-tenant (user A cria org, user B não vê) **deferido pra M1-T01** quando teremos mutations próprias chamando `checkPermission`.
 
 ## Decisões tomadas durante execução
+
+- **M2-T09 (2026-04-23)** — System prompt builder. Pure fn `buildSystemPrompt({agent, memories, users, channels, skills})` em `convex/agents/_libs/systemPrompt.ts`. Layout platform-agnostic (markdown puro, sem Slack/Discord/mrkdwn): preâmbulo = `agent.systemPrompt` raw; `## Users`/`## Channels` skipados quando vazios (hoje sempre vazios — reserva p/ platform adapters em M4); `## Tools` + `## Memory` sempre renderizados com `(none)` fallback pra o modelo não alucinar contexto ausente. Memórias agrupadas org → agent → thread, dentro de cada scope newest-first pra priorizar em truncamento. Cap `MEMORY_CHAR_CAP = 10_000` chars + warning `_Additional memories omitted_` — evita system prompt explodir quando memory-table cresce. **Deviation vs. spec** (task dizia "usado no agentFactory"): wired em `handleIncoming` via `AgentPrompt.system` override no 3º arg do `streamText`, não no factory. Razão: cache key do factory é `${orgId}:${agentId}:${modelId}` — intencionalmente exclui `systemPrompt` pra não rebuildar o Agent toda turn, então baking no `instructions` deixaria contexto stale no cached Agent. `AgentPrompt.system` é o path oficial AI SDK v6 pra per-turn override (confirmado em `@convex-dev/agent@0.6.1/dist/client/types.d.ts:24`). **Side-effect positivo**: `handleIncoming` agora usa `buildToolSet` direto em vez de `resolveTools(ctx, scope)`, compartilhando a query `listResolvedForAgentInternal` com o prompt builder — economiza 1 round-trip por turn. Smoke real validado: seedada memória org-scope `alwaysOn=true` ("The internal project code-name is Zephyr") via Dashboard Data tab → pergunta em nova thread → modelo respondeu "Zephyr"; mesma pergunta sem memória → "não sei". Negative + positive control limpos. 9 tests novos (snapshot inline + ordenação de scopes + truncamento + platform-agnostic + empty states + <20k bound); suite total 331. **Nota sobre `memory.search` + M3**: durante smoke, confirmado que `alwaysOn=false` fica invisível hoje (não entra no prompt, stub de `memory.search` só varre `alwaysOn=true`). Decisão consciente: sem embeddings (M3-T02) keyword match sobre pool inteiro produziria falso-positivos garantidos; stub retorna `[]` pra não alucinar. Fica explícito pro usuário que retrieval semântico completo (`alwaysOn=false` searchable) só vale a partir de M3-T04.
 
 - **M2-T08 (2026-04-22)** — Skill `memory.search` stub. Zod `{query, scope: "memory"|"history"|"all", limit: number ≤50, default 10}`. `scope` é **source-of-search** (memory-table vs message-history vs union), não o scope da row de memória — nomeação deliberada pra não conflitar com `MemoryScope` do domínio (`"org"|"agent"|"thread"`). Impl substring case-insensitive sobre `listAlwaysOnInternal` (mesma query que o system-prompt builder consumirá em M2-T09) — só alwaysOn porque sem embeddings (M3-T02) não dá pra fazer retrieval semântico sobre as demais memórias, e expor keyword match contra todo o pool seria falso positivo garantido (memórias não-pin tendem a ser "fatos esquecíveis" filtrados por relevância, não keyword). `scope:"history"` retorna `[]` com comentário apontando M3-T04 — preserva a shape do enum estável pra não invalidar agent-memory ao ligar. Seed de `_seeds.ts` corrigido (era `enum(["user","thread","org"])` com `max(20)` — herança de um draft antigo, nunca bateu com nada). **Smoke revelou footgun**: `seedSkillCatalog` é idempotente-só, então editar zod em código deixa a row antiga no DB; `resolveTools` advertisa schema stale pro modelo, este manda valor fora do novo enum, e `MemorySearchArgs.parse()` rejeita com `invalid_value`. Workaround: delete manual + re-seed. Fix durável (upsert-on-diff) avaliado e rejeitado em-scope — comparação por string de JSON frágil (depende de zod serialization ordering), auto-upgrade mascara migrações de `sideEffect` silenciosas, e M2-T08 não é lifecycle de catálogo. Criado follow-up `F-01` com o plano completo (mutation dedicada `resyncSkillCatalog`, compare via parse+deep-equal, mantém `seedCatalog` idempotente pra predictability em dev local). 8 testes novos (impl) + update em `_seeds.ts` sem mudar `_seeds.test.ts` (só valida JSON round-trip); suite total 322.
 

@@ -108,6 +108,7 @@ export async function streamAssistantReply(
 		tools?: ToolSet;
 		stopWhen?: StopCondition<ToolSet> | StopCondition<ToolSet>[];
 		recentMessages?: number;
+		system?: string;
 	},
 ): Promise<{ text: string }> {
 	const tools = args.tools ?? undefined;
@@ -117,7 +118,7 @@ export async function streamAssistantReply(
 	const result = await args.agent.streamText(
 		ctx,
 		{ threadId: args.agentThreadId, userId: args.userId ?? undefined },
-		{ promptMessageId: args.promptMessageId, tools, stopWhen },
+		{ promptMessageId: args.promptMessageId, tools, stopWhen, system: args.system },
 		{ saveStreamDeltas: false, contextOptions: { recentMessages } },
 	);
 	const text = await result.text;
