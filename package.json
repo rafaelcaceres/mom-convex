@@ -26,6 +26,7 @@
 		"@convex-dev/auth": "^0.0.91",
 		"@djpanda/convex-authz": "^0.1.7",
 		"@djpanda/convex-tenants": "^0.1.6",
+		"@vercel/sandbox": "^1.10.0",
 		"ai": "^6.0.168",
 		"convex": "^1.18.0",
 		"convex-helpers": "^0.1.114",

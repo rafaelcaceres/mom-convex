@@ -13,13 +13,13 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 - **Current milestone:** M2 — Agente real + Vercel Sandbox
 - **Last updated:** 2026-04-23
-- **Overall:** 32 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Overall:** 33 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
-| M2 — Agente real + Vercel Sandbox | 10 | 19 |
+| M2 — Agente real + Vercel Sandbox | 11 | 19 |
 | M3 — RAG + integrações reais | 0 | 12 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
@@ -67,7 +67,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T08](tasks/m2-agent-sandbox/M2-T08-skill-memory-search-stub.md) — Skill `memory.search` stub
 - [x] [M2-T09](tasks/m2-agent-sandbox/M2-T09-system-prompt-builder.md) — System prompt builder
 - [x] [M2-T10](tasks/m2-agent-sandbox/M2-T10-domain-sandboxes.md) — Domain `sandboxes`
-- [ ] [M2-T11](tasks/m2-agent-sandbox/M2-T11-vercel-sandbox-wrapper.md) — Vercel Sandbox wrapper
+- [x] [M2-T11](tasks/m2-agent-sandbox/M2-T11-vercel-sandbox-wrapper.md) — Vercel Sandbox wrapper
 - [ ] [M2-T12](tasks/m2-agent-sandbox/M2-T12-skills-sandbox.md) — Skills sandbox.* (bash/read/write/browse)
 - [ ] [M2-T14](tasks/m2-agent-sandbox/M2-T14-domain-cost-ledger.md) — Domain `costLedger`
 - [ ] [M2-T15](tasks/m2-agent-sandbox/M2-T15-on-step-finish-cost.md) — onStepFinish → costLedger
@@ -121,6 +121,8 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - **M0-T05 spike resultado**: `@djpanda/convex-tenants@0.1.6` + `@djpanda/convex-authz@0.1.7` integram bem com `@convex-dev/auth@0.0.91`. Peer-dep exige authz `0.1.7` (não `2.x`). API do `makeTenantsAPI` não tem `createInvitation`/`declineInvitation`/`revokeInvitation` — usa `inviteMember`/`cancelInvitation`/`resendInvitation`/`acceptInvitation`. Stability: OK pra seguir. Smoke test de E2E multi-tenant (user A cria org, user B não vê) **deferido pra M1-T01** quando teremos mutations próprias chamando `checkPermission`.
 
 ## Decisões tomadas durante execução
+
+- **M2-T11 (2026-04-23)** — Vercel Sandbox wrapper em 3 camadas: `ISandboxClient` (facade mockable), `DefaultSandboxClient` (impl sobre `@vercel/sandbox@1.10.0`), e pure fns `getOrCreateSandbox` / `resumeSandbox` / `destroySandbox` que tomam `client` + `SandboxRepoDeps` (callbacks DB injetadas). Razão do split: orquestração precisa mexer em DB (check existing → create → persist), mas quer ser testada sem `convex-test` / `ActionCtx` — pure fns com DI resolvem (9 unit tests sem subir convex test harness). Real action wire chega em M2-T12. **Pitfall do SDK v1.10.0**: (a) **sem "resume" nativo** — `Sandbox.create({source:{type:"snapshot", snapshotId}})` é o path oficial pra retomar de snapshot; nosso `persistentId` = Vercel `snapshotId`; (b) **sem tagging/labels** — injeta `orgId`/`threadId` como env vars `MOM_ORG_ID`/`MOM_THREAD_ID`, que são visíveis dentro do processo (audit log in-VM em M4-T08 aproveita); (c) snapshot stop+save é operação explícita (`sandbox.snapshot()`), não auto-persist; persistência só grava `persistentId` se o caller chamar snapshot antes do stop (fora do escopo T11, chega via T12). **Invariante 1-por-thread**: enforçado nas pure fns — zombie row (DB ativo, VM gone por crash/GC Vercel) detectado via `client.reconnect` retornando null; nesse caso tombstona antes de inserir nova row. `destroySandbox` **sempre tombstona** (try/finally) mesmo se `client.stop` lançar: ghost row (DB diz "ativo" mas VM morreu) é pior que orphan VM (Vercel reap no idle). **Runtime default `python3.13`** porque smoke M2-T19 é FizzBuzz em Python. Live test (`LIVE_VERCEL=1`) skipa por default — cobre o cycle create→runCommand("echo hi")→stop contra API real, mas requer token pago. 9 unit tests + 1 live-skipped; suite total 359.
 
 - **M2-T10 (2026-04-23)** — Domain `sandboxes`. Bookkeeping: 1 row por sandbox Vercel vivo, amarrado a um thread. Sem isso, cada call de `sandbox.*` pagaria cold-start. Status tri-state `active|stopped|destroyed`: `stopped` cobre persistent-mode auto-suspend (Vercel snapshota disco → `persistentId`), `destroyed` é tombstone (mantido pra `getByThread` distinguir "nunca teve" de "teve e acabou" + audit trail do GC cron em M2-T16). `provider` como union literal `"vercel"` — swap pra E2B/self-hosted vira additive, não migration. Invariante "1 não-destroyed por thread" **fica pro wrapper M2-T11 enforçar** — domain não possui write-path de criação ainda, só mutadores (`markUsed`/`markStopped`/`markDestroyed`). `orgId` denormalizado do thread seguindo padrão de `agentSkills` — tenant queries sem JOIN, e sandboxes não movem entre orgs. Índices: `by_thread` (getByThread scan O(1..few)), `by_status_lastUsedAt` composite (GC sweep usa range-scan dentro da partição `status=active`). `listIdle` **só retorna `active`** — `stopped` já tá snapshot-suspendido e barato, se a política mudar bumpa em 1 linha. `isExpired` retorna `false` pra destroyed (não re-matar). `markUsed`/`markStopped` rejeitam destroyed (invariante aggregate). 19 tests (10 model + 9 repo); suite total 350.
 
