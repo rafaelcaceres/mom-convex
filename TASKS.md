@@ -13,13 +13,13 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 - **Current milestone:** M2 — Agente real + Vercel Sandbox
 - **Last updated:** 2026-04-23
-- **Overall:** 31 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Overall:** 32 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
-| M2 — Agente real + Vercel Sandbox | 9 | 19 |
+| M2 — Agente real + Vercel Sandbox | 10 | 19 |
 | M3 — RAG + integrações reais | 0 | 12 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
@@ -66,7 +66,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T07](tasks/m2-agent-sandbox/M2-T07-domain-memory.md) — Domain `memory` + scopes
 - [x] [M2-T08](tasks/m2-agent-sandbox/M2-T08-skill-memory-search-stub.md) — Skill `memory.search` stub
 - [x] [M2-T09](tasks/m2-agent-sandbox/M2-T09-system-prompt-builder.md) — System prompt builder
-- [ ] [M2-T10](tasks/m2-agent-sandbox/M2-T10-domain-sandboxes.md) — Domain `sandboxes`
+- [x] [M2-T10](tasks/m2-agent-sandbox/M2-T10-domain-sandboxes.md) — Domain `sandboxes`
 - [ ] [M2-T11](tasks/m2-agent-sandbox/M2-T11-vercel-sandbox-wrapper.md) — Vercel Sandbox wrapper
 - [ ] [M2-T12](tasks/m2-agent-sandbox/M2-T12-skills-sandbox.md) — Skills sandbox.* (bash/read/write/browse)
 - [ ] [M2-T14](tasks/m2-agent-sandbox/M2-T14-domain-cost-ledger.md) — Domain `costLedger`
@@ -121,6 +121,8 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - **M0-T05 spike resultado**: `@djpanda/convex-tenants@0.1.6` + `@djpanda/convex-authz@0.1.7` integram bem com `@convex-dev/auth@0.0.91`. Peer-dep exige authz `0.1.7` (não `2.x`). API do `makeTenantsAPI` não tem `createInvitation`/`declineInvitation`/`revokeInvitation` — usa `inviteMember`/`cancelInvitation`/`resendInvitation`/`acceptInvitation`. Stability: OK pra seguir. Smoke test de E2E multi-tenant (user A cria org, user B não vê) **deferido pra M1-T01** quando teremos mutations próprias chamando `checkPermission`.
 
 ## Decisões tomadas durante execução
+
+- **M2-T10 (2026-04-23)** — Domain `sandboxes`. Bookkeeping: 1 row por sandbox Vercel vivo, amarrado a um thread. Sem isso, cada call de `sandbox.*` pagaria cold-start. Status tri-state `active|stopped|destroyed`: `stopped` cobre persistent-mode auto-suspend (Vercel snapshota disco → `persistentId`), `destroyed` é tombstone (mantido pra `getByThread` distinguir "nunca teve" de "teve e acabou" + audit trail do GC cron em M2-T16). `provider` como union literal `"vercel"` — swap pra E2B/self-hosted vira additive, não migration. Invariante "1 não-destroyed por thread" **fica pro wrapper M2-T11 enforçar** — domain não possui write-path de criação ainda, só mutadores (`markUsed`/`markStopped`/`markDestroyed`). `orgId` denormalizado do thread seguindo padrão de `agentSkills` — tenant queries sem JOIN, e sandboxes não movem entre orgs. Índices: `by_thread` (getByThread scan O(1..few)), `by_status_lastUsedAt` composite (GC sweep usa range-scan dentro da partição `status=active`). `listIdle` **só retorna `active`** — `stopped` já tá snapshot-suspendido e barato, se a política mudar bumpa em 1 linha. `isExpired` retorna `false` pra destroyed (não re-matar). `markUsed`/`markStopped` rejeitam destroyed (invariante aggregate). 19 tests (10 model + 9 repo); suite total 350.
 
 - **M2-T09 (2026-04-23)** — System prompt builder. Pure fn `buildSystemPrompt({agent, memories, users, channels, skills})` em `convex/agents/_libs/systemPrompt.ts`. Layout platform-agnostic (markdown puro, sem Slack/Discord/mrkdwn): preâmbulo = `agent.systemPrompt` raw; `## Users`/`## Channels` skipados quando vazios (hoje sempre vazios — reserva p/ platform adapters em M4); `## Tools` + `## Memory` sempre renderizados com `(none)` fallback pra o modelo não alucinar contexto ausente. Memórias agrupadas org → agent → thread, dentro de cada scope newest-first pra priorizar em truncamento. Cap `MEMORY_CHAR_CAP = 10_000` chars + warning `_Additional memories omitted_` — evita system prompt explodir quando memory-table cresce. **Deviation vs. spec** (task dizia "usado no agentFactory"): wired em `handleIncoming` via `AgentPrompt.system` override no 3º arg do `streamText`, não no factory. Razão: cache key do factory é `${orgId}:${agentId}:${modelId}` — intencionalmente exclui `systemPrompt` pra não rebuildar o Agent toda turn, então baking no `instructions` deixaria contexto stale no cached Agent. `AgentPrompt.system` é o path oficial AI SDK v6 pra per-turn override (confirmado em `@convex-dev/agent@0.6.1/dist/client/types.d.ts:24`). **Side-effect positivo**: `handleIncoming` agora usa `buildToolSet` direto em vez de `resolveTools(ctx, scope)`, compartilhando a query `listResolvedForAgentInternal` com o prompt builder — economiza 1 round-trip por turn. Smoke real validado: seedada memória org-scope `alwaysOn=true` ("The internal project code-name is Zephyr") via Dashboard Data tab → pergunta em nova thread → modelo respondeu "Zephyr"; mesma pergunta sem memória → "não sei". Negative + positive control limpos. 9 tests novos (snapshot inline + ordenação de scopes + truncamento + platform-agnostic + empty states + <20k bound); suite total 331. **Nota sobre `memory.search` + M3**: durante smoke, confirmado que `alwaysOn=false` fica invisível hoje (não entra no prompt, stub de `memory.search` só varre `alwaysOn=true`). Decisão consciente: sem embeddings (M3-T02) keyword match sobre pool inteiro produziria falso-positivos garantidos; stub retorna `[]` pra não alucinar. Fica explícito pro usuário que retrieval semântico completo (`alwaysOn=false` searchable) só vale a partir de M3-T04.
 
