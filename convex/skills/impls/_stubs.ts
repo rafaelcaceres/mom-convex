@@ -1,5 +1,3 @@
-import { registerSkill } from "../_libs/skillImpls";
-
 /**
  * Default registrations for skills whose real implementations land in later
  * tasks. Each stub throws with a message that names the target task so the
@@ -9,20 +7,10 @@ import { registerSkill } from "../_libs/skillImpls";
  * new file under `convex/skills/impls/<skillName>.ts` that calls
  * `registerSkill(...)` at import time, and add the import to `invoke.ts`.
  * Last registration wins, so the new file overrides whatever is here.
+ *
+ * No stubs remain at this point — `http.fetch` (M2-T06), `memory.search`
+ * (M2-T08), and all four `sandbox.*` impls (M2-T12) have real files.
+ * Keeping this module as an explicit import anchor so new skills added
+ * between tasks have an obvious place to drop a temporary throw-stub.
  */
-
-registerSkill("sandbox.bash", async () => {
-	throw new Error("sandbox.bash impl lands in M2-T12");
-});
-
-registerSkill("sandbox.read", async () => {
-	throw new Error("sandbox.read impl lands in M2-T12");
-});
-
-registerSkill("sandbox.write", async () => {
-	throw new Error("sandbox.write impl lands in M2-T12");
-});
-
-registerSkill("sandbox.browse", async () => {
-	throw new Error("sandbox.browse impl lands in M2-T12");
-});
+export {};

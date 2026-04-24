@@ -1,3 +1,5 @@
+"use node";
+
 import { Sandbox as VercelSandbox } from "@vercel/sandbox";
 import type { Id } from "../../_generated/dataModel";
 import type { Sandbox } from "../domain/sandbox.model";
@@ -39,6 +41,12 @@ export type SandboxCreateResult = {
 	persistentId?: string;
 };
 
+export type ExecResult = {
+	stdout: string;
+	stderr: string;
+	exitCode: number;
+};
+
 export interface ISandboxClient {
 	create(params: { tags: SandboxTags; timeoutMs?: number }): Promise<SandboxCreateResult>;
 	/**
@@ -48,6 +56,24 @@ export interface ISandboxClient {
 	reconnect(sandboxId: string): Promise<{ sandboxId: string } | null>;
 	resume(persistentId: string, params: { tags: SandboxTags }): Promise<{ sandboxId: string }>;
 	stop(sandboxId: string): Promise<void>;
+	/**
+	 * Run a shell command inside the sandbox. Returns stdout/stderr/exitCode
+	 * captured to strings — the model reads structured JSON, not streamed
+	 * output. `timeoutMs` hard-caps each call; 60s matches the `sandboxBash`
+	 * schema's `timeoutMs.max` in `_seeds.ts`.
+	 */
+	exec(
+		sandboxId: string,
+		args: { command: string; timeoutMs?: number; signal?: AbortSignal },
+	): Promise<ExecResult>;
+	/**
+	 * Read a text file from the sandbox. Returns null when the path doesn't
+	 * exist so the model can distinguish "empty" from "missing" without a
+	 * thrown error round-trip.
+	 */
+	readFile(sandboxId: string, path: string): Promise<string | null>;
+	/** Write (create / overwrite) a text file in the sandbox. */
+	writeFile(sandboxId: string, path: string, content: string): Promise<void>;
 }
 
 export type SandboxRepoDeps = {
@@ -158,18 +184,49 @@ export async function destroySandbox(args: DestroyArgs): Promise<void> {
 }
 
 /**
- * Default Vercel-backed client. Reads `VERCEL_SANDBOX_TOKEN` +
- * `VERCEL_TEAM_ID` from the action runtime env. Not invoked in tests —
- * they inject a mock via the service function's `client` arg.
+ * Default Vercel-backed client. Resolves credentials from the Convex action
+ * runtime env and passes them **explicitly** to every SDK call:
+ *
+ *   - `VERCEL_TOKEN`      — Vercel access token (team-scoped)
+ *   - `VERCEL_TEAM_ID`    — `team_xxx`
+ *   - `VERCEL_PROJECT_ID` — `prj_xxx`
+ *
+ * All three are required. The SDK has an implicit OIDC fallback
+ * (`VERCEL_OIDC_TOKEN`) but those tokens expire every 12h, which is a
+ * non-starter for a backend service — we fail fast at first call instead
+ * of hiding a latent-creds bug behind an opaque SDK error.
  *
  * `runtime: "python3.13"` is the M2 default: the fizzbuzz smoke (M2-T19)
  * runs a python script. Future agents can parametrize via the wrapper.
+ *
+ * Tests don't reach this code — `sandboxAccess._setSandboxClientOverride`
+ * swaps in a mock `ISandboxClient` before any impl runs.
  */
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
+type VercelCreds = { token: string; teamId: string; projectId: string };
+
+function loadVercelCreds(): VercelCreds {
+	const token = process.env.VERCEL_TOKEN;
+	const teamId = process.env.VERCEL_TEAM_ID;
+	const projectId = process.env.VERCEL_PROJECT_ID;
+	const missing: string[] = [];
+	if (!token) missing.push("VERCEL_TOKEN");
+	if (!teamId) missing.push("VERCEL_TEAM_ID");
+	if (!projectId) missing.push("VERCEL_PROJECT_ID");
+	if (missing.length > 0) {
+		throw new Error(
+			`Vercel Sandbox requires ${missing.join(", ")} in the Convex deployment env. Set via \`pnpm exec convex env set VERCEL_TOKEN …\` etc. Docs: https://vercel.com/docs/vercel-sandbox/concepts/authentication`,
+		);
+	}
+	return { token: token as string, teamId: teamId as string, projectId: projectId as string };
+}
+
 export const DefaultSandboxClient: ISandboxClient = {
 	create: async ({ tags, timeoutMs }) => {
+		const creds = loadVercelCreds();
 		const sandbox = await VercelSandbox.create({
+			...creds,
 			runtime: "python3.13",
 			timeout: timeoutMs ?? DEFAULT_TIMEOUT_MS,
 			env: {
@@ -182,7 +239,8 @@ export const DefaultSandboxClient: ISandboxClient = {
 
 	reconnect: async (sandboxId) => {
 		try {
-			const sandbox = await VercelSandbox.get({ sandboxId });
+			const creds = loadVercelCreds();
+			const sandbox = await VercelSandbox.get({ ...creds, sandboxId });
 			if (
 				sandbox.status === "stopped" ||
 				sandbox.status === "stopping" ||
@@ -198,7 +256,9 @@ export const DefaultSandboxClient: ISandboxClient = {
 	},
 
 	resume: async (persistentId, { tags }) => {
+		const creds = loadVercelCreds();
 		const sandbox = await VercelSandbox.create({
+			...creds,
 			source: { type: "snapshot", snapshotId: persistentId },
 			timeout: DEFAULT_TIMEOUT_MS,
 			env: {
@@ -210,7 +270,55 @@ export const DefaultSandboxClient: ISandboxClient = {
 	},
 
 	stop: async (sandboxId) => {
-		const sandbox = await VercelSandbox.get({ sandboxId });
+		const creds = loadVercelCreds();
+		const sandbox = await VercelSandbox.get({ ...creds, sandboxId });
 		await sandbox.stop();
 	},
+
+	exec: async (sandboxId, { command, timeoutMs, signal }) => {
+		const creds = loadVercelCreds();
+		const sandbox = await VercelSandbox.get({ ...creds, sandboxId });
+		// Single shell string routed through `bash -lc` so pipes / redirects /
+		// env substitution work as expected. Confirmation gate + dangerous-arg
+		// heuristic (M2-T05) already fires before we get here for destructive
+		// inputs, so the bash invocation itself is safe-by-policy.
+		const mergedSignal = mergeExecSignals(signal, timeoutMs);
+		const result = await sandbox.runCommand({
+			cmd: "bash",
+			args: ["-lc", command],
+			signal: mergedSignal,
+		});
+		const [stdout, stderr] = await Promise.all([result.stdout(), result.stderr()]);
+		return { stdout, stderr, exitCode: result.exitCode };
+	},
+
+	readFile: async (sandboxId, path) => {
+		const creds = loadVercelCreds();
+		const sandbox = await VercelSandbox.get({ ...creds, sandboxId });
+		const buf = await sandbox.readFileToBuffer({ path });
+		if (buf === null) return null;
+		return buf.toString("utf8");
+	},
+
+	writeFile: async (sandboxId, path, content) => {
+		const creds = loadVercelCreds();
+		const sandbox = await VercelSandbox.get({ ...creds, sandboxId });
+		await sandbox.writeFiles([{ path, content }]);
+	},
 };
+
+type AbortStatic = typeof AbortSignal & {
+	any?: (signals: AbortSignal[]) => AbortSignal;
+};
+
+function mergeExecSignals(
+	caller: AbortSignal | undefined,
+	timeoutMs: number | undefined,
+): AbortSignal | undefined {
+	const timeout = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
+	if (!caller) return timeout;
+	if (!timeout) return caller;
+	const anyFn = (AbortSignal as AbortStatic).any;
+	if (anyFn) return anyFn.call(AbortSignal, [caller, timeout]);
+	return timeout;
+}

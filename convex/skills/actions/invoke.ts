@@ -1,3 +1,5 @@
+"use node";
+
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import { internalAction } from "../../customFunctions";
@@ -17,6 +19,10 @@ import "../impls/_stubs";
 // Real impls registered after stubs — last registration wins.
 import "../impls/httpFetch";
 import "../impls/memorySearch";
+import "../impls/sandboxBash";
+import "../impls/sandboxBrowse";
+import "../impls/sandboxRead";
+import "../impls/sandboxWrite";
 
 /**
  * Central dispatcher for every tool call. Pipeline:
@@ -35,6 +41,13 @@ import "../impls/memorySearch";
  * Every call emits a single JSON audit line to `console.log` with
  * `{type:"skills.invoke", skillKey, status, durationMs, ...}` so Convex
  * log search can slice by skill. Durable audit table lands in M4-T08.
+ *
+ * Dev escape hatch: `DEV_AUTO_APPROVE_WRITES=1` in the action runtime env
+ * skips the declarative `sideEffect: "write"` gate — used to exercise
+ * `sandbox.bash` / `sandbox.write` in dev before M3-T11 lands real
+ * human-in-loop. The dangerous-arg heuristic is NEVER bypassed; `rm -rf /`
+ * still requires confirmation even with the flag on. Prod deployments
+ * must leave this unset (and will, since we never call `env set` there).
  */
 
 type InvokeResult =
@@ -88,16 +101,24 @@ const invoke = internalAction({
 		}
 
 		// 2. Confirmation gate (declared write OR heuristic match).
+		// Dangerous-arg heuristic NEVER bypassed. Declared write can be
+		// waived in dev via DEV_AUTO_APPROVE_WRITES=1 so sandbox.bash /
+		// sandbox.write are runnable before M3-T11 lands human-in-loop.
 		const declaredWrite = catalog.sideEffect === "write";
 		const dangerous = hasDangerousArgPattern(args.args);
-		if (declaredWrite || dangerous) {
+		const devAutoApprove = process.env.DEV_AUTO_APPROVE_WRITES === "1";
+		const shouldGate = dangerous || (declaredWrite && !devAutoApprove);
+		if (shouldGate) {
 			audit("requireConfirmation", {
-				reason: declaredWrite ? "sideEffect=write" : "dangerousArgPattern",
+				reason: dangerous ? "dangerousArgPattern" : "sideEffect=write",
 			});
 			return {
 				requireConfirmation: true,
 				preview: { skillKey, args: args.args },
 			};
+		}
+		if (declaredWrite && devAutoApprove) {
+			audit("devAutoApprove", { reason: "DEV_AUTO_APPROVE_WRITES=1" });
 		}
 
 		// 3. Impl lookup.

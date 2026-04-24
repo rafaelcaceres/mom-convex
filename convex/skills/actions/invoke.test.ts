@@ -45,9 +45,13 @@ async function setup(t: ReturnType<typeof newTest>): Promise<typeof baseScope> {
 describe("M2-T05 skills.invoke action", () => {
 	beforeEach(() => {
 		_resetSkillRegistry();
+		// biome-ignore lint/performance/noDelete: process.env can only be unset via delete; assignment to undefined leaves the literal string "undefined".
+		delete process.env.DEV_AUTO_APPROVE_WRITES;
 	});
 	afterEach(() => {
 		_resetSkillRegistry();
+		// biome-ignore lint/performance/noDelete: process.env can only be unset via delete; assignment to undefined leaves the literal string "undefined".
+		delete process.env.DEV_AUTO_APPROVE_WRITES;
 		vi.restoreAllMocks();
 	});
 
@@ -144,6 +148,48 @@ describe("M2-T05 skills.invoke action", () => {
 				args: { command: "echo hello" },
 			}),
 		});
+	});
+
+	it("DEV_AUTO_APPROVE_WRITES=1 lets write-side-effect skills run without confirmation", async () => {
+		const t = newTest();
+		const scope = await setup(t);
+
+		process.env.DEV_AUTO_APPROVE_WRITES = "1";
+		const impl = vi.fn(async () => ({ ran: true }));
+		registerSkill("sandbox.bash", impl);
+
+		const result = await t.action(internal.skills.actions.invoke.default, {
+			skillKey: "sandbox.bash",
+			args: { command: "echo hi" },
+			toolCallId: "tc_dev_bypass",
+			scope,
+		});
+
+		expect(impl).toHaveBeenCalledTimes(1);
+		expect(result).toMatchObject({
+			isError: false,
+			content: [{ type: "text", text: expect.stringContaining('"ran"') }],
+		});
+	});
+
+	it("DEV_AUTO_APPROVE_WRITES does NOT bypass the dangerous-arg heuristic", async () => {
+		const t = newTest();
+		const scope = await setup(t);
+
+		process.env.DEV_AUTO_APPROVE_WRITES = "1";
+		const impl = vi.fn();
+		registerSkill("sandbox.bash", impl);
+
+		const result = await t.action(internal.skills.actions.invoke.default, {
+			skillKey: "sandbox.bash",
+			// rm -rf still gates even with the dev flag — safety net.
+			args: { command: "rm -rf /" },
+			toolCallId: "tc_dev_bypass_dangerous",
+			scope,
+		});
+
+		expect(impl).not.toHaveBeenCalled();
+		expect(result).toMatchObject({ requireConfirmation: true });
 	});
 
 	it("read-side-effect skill with dangerous arg pattern ALSO requires confirmation", async () => {

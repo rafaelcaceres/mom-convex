@@ -15,6 +15,9 @@ function makeClientMock(overrides: Partial<ISandboxClient> = {}): ISandboxClient
 		reconnect: vi.fn(async (sandboxId) => ({ sandboxId })),
 		resume: vi.fn(async (_persistentId, _tags) => ({ sandboxId: "sbx_resumed" })),
 		stop: vi.fn(async (_sandboxId) => undefined),
+		exec: vi.fn(async (_sandboxId, _args) => ({ stdout: "", stderr: "", exitCode: 0 })),
+		readFile: vi.fn(async (_sandboxId, _path) => null),
+		writeFile: vi.fn(async (_sandboxId, _path, _content) => undefined),
 		...overrides,
 	};
 }
