@@ -1,5 +1,6 @@
 import { SignOutButton } from "../SignOutButton";
 import { ChatShell } from "./ChatShell";
+import { ConfigureAgentLink } from "./ConfigureAgentLink";
 
 export default function ChatPage() {
 	return (
@@ -21,7 +22,10 @@ export default function ChatPage() {
 				}}
 			>
 				<h1 style={{ margin: 0, fontSize: "1.125rem" }}>Chat</h1>
-				<SignOutButton />
+				<div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+					<ConfigureAgentLink />
+					<SignOutButton />
+				</div>
 			</header>
 			<ChatShell />
 		</main>
