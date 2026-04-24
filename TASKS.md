@@ -12,14 +12,14 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 ## Status
 
 - **Current milestone:** M2 — Agente real + Vercel Sandbox
-- **Last updated:** 2026-04-23
-- **Overall:** 34 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Last updated:** 2026-04-24
+- **Overall:** 35 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
-| M2 — Agente real + Vercel Sandbox | 12 | 19 |
+| M2 — Agente real + Vercel Sandbox | 13 | 19 |
 | M3 — RAG + integrações reais | 0 | 12 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
@@ -69,7 +69,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T10](tasks/m2-agent-sandbox/M2-T10-domain-sandboxes.md) — Domain `sandboxes`
 - [x] [M2-T11](tasks/m2-agent-sandbox/M2-T11-vercel-sandbox-wrapper.md) — Vercel Sandbox wrapper
 - [x] [M2-T12](tasks/m2-agent-sandbox/M2-T12-skills-sandbox.md) — Skills sandbox.* (bash/read/write/browse)
-- [ ] [M2-T14](tasks/m2-agent-sandbox/M2-T14-domain-cost-ledger.md) — Domain `costLedger`
+- [x] [M2-T14](tasks/m2-agent-sandbox/M2-T14-domain-cost-ledger.md) — Domain `costLedger`
 - [ ] [M2-T15](tasks/m2-agent-sandbox/M2-T15-on-step-finish-cost.md) — onStepFinish → costLedger
 - [ ] [M2-T16](tasks/m2-agent-sandbox/M2-T16-sandbox-gc-cron.md) — Sandbox GC cron
 - [ ] [M2-T17](tasks/m2-agent-sandbox/M2-T17-ui-agent-edit.md) — UI /agents/[id]/edit
@@ -121,6 +121,8 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - **M0-T05 spike resultado**: `@djpanda/convex-tenants@0.1.6` + `@djpanda/convex-authz@0.1.7` integram bem com `@convex-dev/auth@0.0.91`. Peer-dep exige authz `0.1.7` (não `2.x`). API do `makeTenantsAPI` não tem `createInvitation`/`declineInvitation`/`revokeInvitation` — usa `inviteMember`/`cancelInvitation`/`resendInvitation`/`acceptInvitation`. Stability: OK pra seguir. Smoke test de E2E multi-tenant (user A cria org, user B não vê) **deferido pra M1-T01** quando teremos mutations próprias chamando `checkPermission`.
 
 ## Decisões tomadas durante execução
+
+- **M2-T14 (2026-04-24)** — Domain `costLedger`. Append-only: `CostLedgerAgg` não tem mutators por design — ledger rows são history imutável, expor `update`/`mark*` abriria rewrite silencioso de histórico. Schema denormaliza `orgId` + `agentId` (do thread pai) igual ao padrão `agentSkills`/`sandboxes` — dashboards (`sumByOrgInRange`, `topThreadsByCost`) e per-agent views (M4-T07) rodam sem JOIN. Breakdown por step: `stepType?` + `toolName?` ambos optional pra caber em LLM step (`stepType:"text-generation"`, sem toolName) **e** em tool call (`stepType:"tool-call"`, `toolName:"http.fetch"`) sem union gymnastics no validator. `cacheRead`/`cacheWrite` separados de `tokensIn`/`tokensOut` — Anthropic prompt cache tem pricing diferente, e dashboard M4-T07 vai querer mostrar hit ratio. Índices: `by_org_date` (range-scan do dashboard), `by_agent_date` (agent switcher M4-T07), `by_thread` (thread detail M2-T18 — sem `createdAt` no composite porque o volume por thread é naturalmente bounded e `_id` já ordena). `MAX_ROWS_PER_QUERY = 10_000` com flag `truncated` no retorno de `sumByOrgInRange` — dashboards de "last 24h"/"7d" cabem folgado; se estourar, UI pede pro user estreitar range em vez de pagar scan sem teto. Top-N functions (`topThreadsByCost`/`topToolsByCost`) fazem in-memory grouping sobre a mesma `collectInRange` — cap de 10k cobre, e alternativa (scan paginado por grupo) teria complexidade desproporcional pra M2. `topToolsByCost` filtra rows sem `toolName` — LLM-only steps não poluem o breakdown de ferramentas. Queries Convex (`convex/cost/queries/*`) foram adiadas conscientemente pra M4-T07 quando a UI do dashboard materializar o consumo; o repo já entrega a shape final, UI só precisa wrappar. 11 tests novos (4 model + 7 repo); suite total 389 + 1 skipped (live).
 
 - **M2-T12 (2026-04-23)** — 4 skills `sandbox.*` (bash/read/write/browse) entregues. **ISandboxClient estendido** com `exec` / `readFile` / `writeFile` via `CommandFinished.stdout()/.stderr()` (strings, não streams) + `readFileToBuffer`/`writeFiles`. **`invoke.ts` virou `"use node"`** — `@vercel/sandbox` depende de `fs`/`stream`/`os`/`node:*` nativos, e V8 bundler falhava em `node:constants` etc. Cascata: `vercel.ts` + `sandboxAccess.ts` + impls sandbox todos Node-only. V8 actions (ex. `handleIncoming`) chamam `invoke` via `ctx.runAction` — cross-runtime funciona. **SandboxAccess layer** (`convex/sandbox/_libs/sandboxAccess.ts`) é bridge entre action-side e orquestração pura de M2-T11 — resolve `ISandboxClient` (default Vercel, swap pra mock via `_setSandboxClientOverride`) + `SandboxRepoDeps` (default `ctx.runQuery`/`runMutation` wrappers, swap pra mock via `_setSandboxRepoOverride`). Mutations internas criadas (`registerSandbox`, `markUsedInternal`, `markDestroyedInternal`, + query `getByThreadInternal`). **Path guards em read/write** rejeitam `..` traversal + absolute paths fora de `/vercel/sandbox/` / `/tmp/` — defense-in-depth (sandbox já é microVM isolado, mas reduz superfície de ruído). **Write cap de 1MB** pra não deixar modelo mandar blobs gigantes. **bash via `bash -lc`** — pipes/redirect funcionam; confirmation gate (M2-T05) filtra destrutivos upstream. **`browse` stub explícito** — retorna `{note, availableIn:"M3"}` em vez de silenciar, modelo vê e usa `http.fetch` como fallback. **Credenciais Vercel**: descoberto na configuração que `VERCEL_SANDBOX_TOKEN` do `.env.example` original estava errado — a doc oficial (`/docs/vercel-sandbox/concepts/authentication`) exige os 3: `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID` pra non-Vercel hosting. OIDC (`VERCEL_OIDC_TOKEN`) auto-renova SÓ em infra Vercel (via header `x-vercel-oidc-token` injetado por request); fora da Vercel é estático com 12h TTL — inviável pra Convex. Wrapper faz `loadVercelCreds()` no início de cada call e fail-fast com mensagem apontando a env faltante + comando `convex env set`. **Dev bypass `DEV_AUTO_APPROVE_WRITES=1`**: dispatcher aceita flag env no runtime que pula **só** o gate de `sideEffect:"write"`, mantendo a heurística de args perigosos (`rm -rf /`, `curl|sh`) sempre ativa. Necessário porque `sandbox.bash`/`sandbox.write` são `write` e bloqueiam o fluxo todo até M3-T11 wire human-in-loop real — dev pode exercitar antes disso. 2 tests novos (bypass funciona + heurística NÃO é burlada). **Smoke E2E validado**: live test `LIVE_VERCEL=1` passa (create → echo hi → stop ~3s); chat real com Rafael rodou FizzBuzz em Python e retornou output correto. Suite total 377 + 1 skipped (live).
 
