@@ -10,4 +10,8 @@ crons.interval(
 	{},
 );
 
+// Sandbox GC sweeps `active` rows idle for >7 days, stopping the Vercel VM
+// and tombstoning the DB row. 03:00 UTC is quiet for both US and EU.
+crons.daily("sandbox:gc", { hourUTC: 3, minuteUTC: 0 }, internal.sandbox.actions.gc.default, {});
+
 export default crons;

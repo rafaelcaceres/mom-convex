@@ -13,13 +13,13 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 - **Current milestone:** M2 — Agente real + Vercel Sandbox
 - **Last updated:** 2026-04-24
-- **Overall:** 36 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Overall:** 37 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
-| M2 — Agente real + Vercel Sandbox | 14 | 19 |
+| M2 — Agente real + Vercel Sandbox | 15 | 19 |
 | M3 — RAG + integrações reais | 0 | 12 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
@@ -71,7 +71,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T12](tasks/m2-agent-sandbox/M2-T12-skills-sandbox.md) — Skills sandbox.* (bash/read/write/browse)
 - [x] [M2-T14](tasks/m2-agent-sandbox/M2-T14-domain-cost-ledger.md) — Domain `costLedger`
 - [x] [M2-T15](tasks/m2-agent-sandbox/M2-T15-on-step-finish-cost.md) — onStepFinish → costLedger
-- [ ] [M2-T16](tasks/m2-agent-sandbox/M2-T16-sandbox-gc-cron.md) — Sandbox GC cron
+- [x] [M2-T16](tasks/m2-agent-sandbox/M2-T16-sandbox-gc-cron.md) — Sandbox GC cron
 - [ ] [M2-T17](tasks/m2-agent-sandbox/M2-T17-ui-agent-edit.md) — UI /agents/[id]/edit
 - [ ] [M2-T18](tasks/m2-agent-sandbox/M2-T18-ui-thread-detail.md) — UI /threads/[id] — tool calls + cost
 - [ ] [M2-T19](tasks/m2-agent-sandbox/M2-T19-smoke-m2.md) — **Smoke M2 FizzBuzz**
@@ -121,6 +121,8 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - **M0-T05 spike resultado**: `@djpanda/convex-tenants@0.1.6` + `@djpanda/convex-authz@0.1.7` integram bem com `@convex-dev/auth@0.0.91`. Peer-dep exige authz `0.1.7` (não `2.x`). API do `makeTenantsAPI` não tem `createInvitation`/`declineInvitation`/`revokeInvitation` — usa `inviteMember`/`cancelInvitation`/`resendInvitation`/`acceptInvitation`. Stability: OK pra seguir. Smoke test de E2E multi-tenant (user A cria org, user B não vê) **deferido pra M1-T01** quando teremos mutations próprias chamando `checkPermission`.
 
 ## Decisões tomadas durante execução
+
+- **M2-T16 (2026-04-24)** — Sandbox GC cron. Daily 03:00 UTC (`crons.daily`) em vez de hourly — GC de VMs idle não tem urgência e 1 invocação/dia basta vs. 24. Horário escolhido pra cair fora do pico de US e EU. Split em 3 arquivos: `_libs/gc.ts` (pure fn `runGc`, `"use node"` porque importa `destroySandbox` do `vercel.ts`; testável sem convex-test injetando `listIdle` mock), `queries/listIdleInternal.ts` (internalQuery expondo `SandboxRepository.listIdle`), `actions/gc.ts` (internalAction `"use node"` que wireia `DefaultSandboxClient` + repo deps via `ctx.runQuery`/`runMutation` e delega ao `runGc`). **Desvio vs spec**: spec dizia `convex/sandbox/internal/gc.ts`, segui convenção do repo (`actions/` + `_libs/` + `queries/` — mesmo padrão de M2-T11/T12). CLI `pnpm sandbox:gc:dry` não foi criado: o action aceita `{dryRun:true}` e `pnpm exec convex run sandbox/actions/gc '{"dryRun":true}'` cobre o caso sem script duplicado. Error isolation por row — `destroySandbox` **sempre tombstone no finally** (herdado de M2-T11), então erro em um row ainda avança a partição `status=active` e o próximo sweep não reprocessa. Errors coletados em `{sandboxId, message}[]` e retornados; loop nunca aborta. `runGc` loga JSON estruturado por sandbox (`type:"sandbox.gc", status:"destroyed"|"error"|"summary"`) — Convex log search slice por status. Tests: cron registry assert (`crons.crons["sandbox:gc"].schedule` = `{type:"daily", hourUTC:3, minuteUTC:0}`) + 4 unit tests no pure fn (threshold filter 1d/5d/8d → só 8d, dry-run skip stop, erro isolado, empty pool). Suite total 405 + 1 skipped (live).
 
 - **M2-T15 (2026-04-24)** — `onStepFinish` → `costLedger`. Pure fn `priceFromUsage({model, usage})` em `convex/cost/_libs/` com tabela `MODEL_PRICES` (Opus 4.7/4.6 = $15/$75 per M, Sonnet 4.6/4.5 = $3/$15 per M, Haiku 4.5 = $1/$5 per M, + cache read/write columns). Preço do **slice não-cacheado** separado de cache read/write porque Anthropic cobra 3 colunas distintas; uso `inputTokenDetails.noCacheTokens` quando provider manda, fallback pra `tokensIn - cacheRead - cacheWrite`. Modelo desconhecido → `console.warn` + `costUsd=0` **mas tokens preservados** — dashboard pode flaggar rows como "unpriced" sem perder telemetria de uso (regra de bolso: dados incompletos > dados ausentes). **Duas rows por step**: uma LLM (`stepType:"text-generation"`, tokens+cost reais) + uma por tool call (`stepType:"tool-call"`, `toolName` set, tokens=0, cost=0 — o step LLM já carrega o custo de tokens). Razão: `topToolsByCost` (M4-T07) e thread detail (M2-T18) precisam de breakdown por ferramenta; gravar tool rows com cost=0 dá contagem de uso sem double-pricing o custo dos tokens. `createdAt: Date.now()` **único por step** pra rows do mesmo turn ordenarem deterministicamente. Mutation `record` fica em `convex/cost/mutations/record.ts` como `internalMutation` — chamada da action via `ctx.runMutation` pra que cada append seja sua própria transação pequena (não contende com a mutation da user message). `streamAssistantReply` em `threadBridge.ts` estendido com `onStepFinish?: (step: StepResult<ToolSet>) => void|Promise<void>` — `@convex-dev/agent@0.6.1` aceita user-supplied `onStepFinish` e forwarda (visto em `dist/client/streamText.js:141-152`). **Pitfall confirmado**: AI SDK v6 removeu o field `stepType` do `StepResult` (era v5) — usei strings literais `"text-generation"`/`"tool-call"` hardcoded em vez de tentar ler do step; se provider expuser `finishReason` útil no futuro, fácil trocar sem migration. 10 tests novos (7 priceFromUsage + 2 record + 1 handleIncoming extension); suite total 399 + 1 skipped (live).
 
