@@ -4,6 +4,7 @@ import type { Id } from "../../_generated/dataModel";
 import { getAgent } from "../../agents/_libs/agentFactory";
 import { buildSystemPrompt } from "../../agents/_libs/systemPrompt";
 import { saveUserMessage, streamAssistantReply } from "../../agents/adapters/threadBridge";
+import { priceFromUsage } from "../../cost/_libs/priceFromUsage";
 import { internalAction } from "../../customFunctions";
 import { buildToolSet } from "../../skills/_libs/resolveTools";
 
@@ -99,6 +100,48 @@ const handleIncoming = internalAction({
 			userId: args.userMessage.senderId,
 			tools: Object.keys(tools).length > 0 ? tools : undefined,
 			system: systemPrompt,
+			onStepFinish: async (step) => {
+				// Per-step ledger append (M2-T15). One row for the LLM step plus
+				// one per tool call in that step — the tool rows carry no tokens
+				// (the LLM step already accounts for them) but give the dashboard
+				// a handle on tool usage frequency + per-tool detail on
+				// /threads/[id] (M2-T18).
+				const createdAt = Date.now();
+				const price = priceFromUsage({ model: agentDoc.modelId, usage: step.usage });
+				const base = {
+					orgId: agentDoc.orgId,
+					agentId: agentDoc._id,
+					threadId: args.threadId,
+					provider: agentDoc.modelProvider,
+					model: agentDoc.modelId,
+					createdAt,
+				};
+				await ctx.runMutation(internal.cost.mutations.record.default, {
+					...base,
+					tokensIn: price.tokensIn,
+					tokensOut: price.tokensOut,
+					cacheRead: price.cacheRead,
+					cacheWrite: price.cacheWrite,
+					costUsd: price.costUsd,
+					stepType: "text-generation",
+				});
+				if (step.toolCalls.length > 0) {
+					await Promise.all(
+						step.toolCalls.map((call) =>
+							ctx.runMutation(internal.cost.mutations.record.default, {
+								...base,
+								tokensIn: 0,
+								tokensOut: 0,
+								cacheRead: 0,
+								cacheWrite: 0,
+								costUsd: 0,
+								stepType: "tool-call",
+								toolName: call.toolName,
+							}),
+						),
+					);
+				}
+			},
 		});
 
 		if (thread.binding.type === "slack") {

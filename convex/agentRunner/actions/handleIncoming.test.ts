@@ -167,6 +167,46 @@ describe("M2-T01 agentRunner.handleIncoming real streamText", () => {
 		expect(scheduled).toHaveLength(0);
 	});
 
+	it("records a costLedger row per LLM step with priced token usage (M2-T15)", async () => {
+		_setLanguageModelOverride(mockTextModel("ok"));
+
+		const t = newTest();
+		const agentId = await seedAgent(t);
+		const userId = await t.run(async (ctx) => ctx.db.insert("users", {}));
+		const threadId = await seedThread(t, agentId, { type: "web", userId });
+
+		await t.action(internal.agentRunner.actions.handleIncoming.default, {
+			orgId: ORG,
+			threadId,
+			userMessage: { text: "hi", senderId: userId },
+		});
+
+		const rows = await t.run(async (ctx) =>
+			ctx.db
+				.query("costLedger")
+				.withIndex("by_thread", (q) => q.eq("threadId", threadId))
+				.collect(),
+		);
+		expect(rows).toHaveLength(1);
+		const row = rows[0];
+		expect(row).toMatchObject({
+			orgId: ORG,
+			threadId,
+			provider: "anthropic",
+			model: "claude-sonnet-4-5",
+			tokensIn: 1,
+			tokensOut: 1,
+			cacheRead: 0,
+			cacheWrite: 0,
+			stepType: "text-generation",
+		});
+		expect(row?.toolName).toBeUndefined();
+		// Mock token counts (1 in, 1 out) * sonnet-4.5 pricing ($3/M + $15/M)
+		// → costUsd > 0 but tiny. Just assert it's priced, not the exact micro-dollar.
+		expect(row?.costUsd).toBeGreaterThan(0);
+		expect(row?.costUsd).toBeLessThan(0.0001);
+	});
+
 	it("empty text: skips — no writes, no scheduling, no LLM call", async () => {
 		const mock = mockTextModel("should not be called");
 		_setLanguageModelOverride(mock);

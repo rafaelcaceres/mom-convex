@@ -13,13 +13,13 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 - **Current milestone:** M2 — Agente real + Vercel Sandbox
 - **Last updated:** 2026-04-24
-- **Overall:** 35 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Overall:** 36 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
-| M2 — Agente real + Vercel Sandbox | 13 | 19 |
+| M2 — Agente real + Vercel Sandbox | 14 | 19 |
 | M3 — RAG + integrações reais | 0 | 12 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
@@ -70,7 +70,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T11](tasks/m2-agent-sandbox/M2-T11-vercel-sandbox-wrapper.md) — Vercel Sandbox wrapper
 - [x] [M2-T12](tasks/m2-agent-sandbox/M2-T12-skills-sandbox.md) — Skills sandbox.* (bash/read/write/browse)
 - [x] [M2-T14](tasks/m2-agent-sandbox/M2-T14-domain-cost-ledger.md) — Domain `costLedger`
-- [ ] [M2-T15](tasks/m2-agent-sandbox/M2-T15-on-step-finish-cost.md) — onStepFinish → costLedger
+- [x] [M2-T15](tasks/m2-agent-sandbox/M2-T15-on-step-finish-cost.md) — onStepFinish → costLedger
 - [ ] [M2-T16](tasks/m2-agent-sandbox/M2-T16-sandbox-gc-cron.md) — Sandbox GC cron
 - [ ] [M2-T17](tasks/m2-agent-sandbox/M2-T17-ui-agent-edit.md) — UI /agents/[id]/edit
 - [ ] [M2-T18](tasks/m2-agent-sandbox/M2-T18-ui-thread-detail.md) — UI /threads/[id] — tool calls + cost
@@ -121,6 +121,8 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - **M0-T05 spike resultado**: `@djpanda/convex-tenants@0.1.6` + `@djpanda/convex-authz@0.1.7` integram bem com `@convex-dev/auth@0.0.91`. Peer-dep exige authz `0.1.7` (não `2.x`). API do `makeTenantsAPI` não tem `createInvitation`/`declineInvitation`/`revokeInvitation` — usa `inviteMember`/`cancelInvitation`/`resendInvitation`/`acceptInvitation`. Stability: OK pra seguir. Smoke test de E2E multi-tenant (user A cria org, user B não vê) **deferido pra M1-T01** quando teremos mutations próprias chamando `checkPermission`.
 
 ## Decisões tomadas durante execução
+
+- **M2-T15 (2026-04-24)** — `onStepFinish` → `costLedger`. Pure fn `priceFromUsage({model, usage})` em `convex/cost/_libs/` com tabela `MODEL_PRICES` (Opus 4.7/4.6 = $15/$75 per M, Sonnet 4.6/4.5 = $3/$15 per M, Haiku 4.5 = $1/$5 per M, + cache read/write columns). Preço do **slice não-cacheado** separado de cache read/write porque Anthropic cobra 3 colunas distintas; uso `inputTokenDetails.noCacheTokens` quando provider manda, fallback pra `tokensIn - cacheRead - cacheWrite`. Modelo desconhecido → `console.warn` + `costUsd=0` **mas tokens preservados** — dashboard pode flaggar rows como "unpriced" sem perder telemetria de uso (regra de bolso: dados incompletos > dados ausentes). **Duas rows por step**: uma LLM (`stepType:"text-generation"`, tokens+cost reais) + uma por tool call (`stepType:"tool-call"`, `toolName` set, tokens=0, cost=0 — o step LLM já carrega o custo de tokens). Razão: `topToolsByCost` (M4-T07) e thread detail (M2-T18) precisam de breakdown por ferramenta; gravar tool rows com cost=0 dá contagem de uso sem double-pricing o custo dos tokens. `createdAt: Date.now()` **único por step** pra rows do mesmo turn ordenarem deterministicamente. Mutation `record` fica em `convex/cost/mutations/record.ts` como `internalMutation` — chamada da action via `ctx.runMutation` pra que cada append seja sua própria transação pequena (não contende com a mutation da user message). `streamAssistantReply` em `threadBridge.ts` estendido com `onStepFinish?: (step: StepResult<ToolSet>) => void|Promise<void>` — `@convex-dev/agent@0.6.1` aceita user-supplied `onStepFinish` e forwarda (visto em `dist/client/streamText.js:141-152`). **Pitfall confirmado**: AI SDK v6 removeu o field `stepType` do `StepResult` (era v5) — usei strings literais `"text-generation"`/`"tool-call"` hardcoded em vez de tentar ler do step; se provider expuser `finishReason` útil no futuro, fácil trocar sem migration. 10 tests novos (7 priceFromUsage + 2 record + 1 handleIncoming extension); suite total 399 + 1 skipped (live).
 
 - **M2-T14 (2026-04-24)** — Domain `costLedger`. Append-only: `CostLedgerAgg` não tem mutators por design — ledger rows são history imutável, expor `update`/`mark*` abriria rewrite silencioso de histórico. Schema denormaliza `orgId` + `agentId` (do thread pai) igual ao padrão `agentSkills`/`sandboxes` — dashboards (`sumByOrgInRange`, `topThreadsByCost`) e per-agent views (M4-T07) rodam sem JOIN. Breakdown por step: `stepType?` + `toolName?` ambos optional pra caber em LLM step (`stepType:"text-generation"`, sem toolName) **e** em tool call (`stepType:"tool-call"`, `toolName:"http.fetch"`) sem union gymnastics no validator. `cacheRead`/`cacheWrite` separados de `tokensIn`/`tokensOut` — Anthropic prompt cache tem pricing diferente, e dashboard M4-T07 vai querer mostrar hit ratio. Índices: `by_org_date` (range-scan do dashboard), `by_agent_date` (agent switcher M4-T07), `by_thread` (thread detail M2-T18 — sem `createdAt` no composite porque o volume por thread é naturalmente bounded e `_id` já ordena). `MAX_ROWS_PER_QUERY = 10_000` com flag `truncated` no retorno de `sumByOrgInRange` — dashboards de "last 24h"/"7d" cabem folgado; se estourar, UI pede pro user estreitar range em vez de pagar scan sem teto. Top-N functions (`topThreadsByCost`/`topToolsByCost`) fazem in-memory grouping sobre a mesma `collectInRange` — cap de 10k cobre, e alternativa (scan paginado por grupo) teria complexidade desproporcional pra M2. `topToolsByCost` filtra rows sem `toolName` — LLM-only steps não poluem o breakdown de ferramentas. Queries Convex (`convex/cost/queries/*`) foram adiadas conscientemente pra M4-T07 quando a UI do dashboard materializar o consumo; o repo já entrega a shape final, UI só precisa wrappar. 11 tests novos (4 model + 7 repo); suite total 389 + 1 skipped (live).
 

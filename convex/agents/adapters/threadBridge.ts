@@ -1,6 +1,6 @@
 import type { Agent } from "@convex-dev/agent";
 import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
-import { type StopCondition, type ToolSet, stepCountIs } from "ai";
+import { type StepResult, type StopCondition, type ToolSet, stepCountIs } from "ai";
 import type { PaginationOptions } from "convex/server";
 import { components } from "../../_generated/api";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../../_generated/server";
@@ -109,6 +109,7 @@ export async function streamAssistantReply(
 		stopWhen?: StopCondition<ToolSet> | StopCondition<ToolSet>[];
 		recentMessages?: number;
 		system?: string;
+		onStepFinish?: (step: StepResult<ToolSet>) => void | Promise<void>;
 	},
 ): Promise<{ text: string }> {
 	const tools = args.tools ?? undefined;
@@ -118,7 +119,13 @@ export async function streamAssistantReply(
 	const result = await args.agent.streamText(
 		ctx,
 		{ threadId: args.agentThreadId, userId: args.userId ?? undefined },
-		{ promptMessageId: args.promptMessageId, tools, stopWhen, system: args.system },
+		{
+			promptMessageId: args.promptMessageId,
+			tools,
+			stopWhen,
+			system: args.system,
+			onStepFinish: args.onStepFinish,
+		},
 		{ saveStreamDeltas: false, contextOptions: { recentMessages } },
 	);
 	const text = await result.text;
