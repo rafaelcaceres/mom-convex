@@ -24,6 +24,14 @@ export const AgentSkillRepository: IAgentSkillRepository = {
 		return docs.map((doc) => new AgentSkillAgg(doc));
 	},
 
+	listAllForAgent: async (ctx, { agentId }) => {
+		const docs = await ctx.db
+			.query("agentSkills")
+			.withIndex("by_agent", (q) => q.eq("agentId", agentId))
+			.take(MAX_BINDINGS_PER_AGENT);
+		return docs.map((doc) => new AgentSkillAgg(doc));
+	},
+
 	enable: async (ctx, { orgId, agentId, skillKey, config }) => {
 		const existing = await ctx.db
 			.query("agentSkills")

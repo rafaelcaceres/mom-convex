@@ -16,6 +16,16 @@ export interface IAgentSkillRepository extends IRepository<"agentSkills", AgentS
 	listForAgent(ctx: QueryCtx, clause: { agentId: AgentSkill["agentId"] }): Promise<AgentSkillAgg[]>;
 
 	/**
+	 * Returns every binding for the agent (enabled + disabled). Used by the
+	 * /agents/[id]/edit UI so owners can see + flip disabled rows that are
+	 * invisible to `listForAgent` / `resolveTools`.
+	 */
+	listAllForAgent(
+		ctx: QueryCtx,
+		clause: { agentId: AgentSkill["agentId"] },
+	): Promise<AgentSkillAgg[]>;
+
+	/**
 	 * Idempotent enable: inserts a fresh binding, or flips a soft-disabled
 	 * row back to `enabled: true`. Preserves existing `config` unless the
 	 * caller passes a new one.

@@ -13,13 +13,13 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 - **Current milestone:** M2 — Agente real + Vercel Sandbox
 - **Last updated:** 2026-04-24
-- **Overall:** 37 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Overall:** 38 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
-| M2 — Agente real + Vercel Sandbox | 15 | 19 |
+| M2 — Agente real + Vercel Sandbox | 16 | 19 |
 | M3 — RAG + integrações reais | 0 | 12 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
@@ -72,7 +72,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T14](tasks/m2-agent-sandbox/M2-T14-domain-cost-ledger.md) — Domain `costLedger`
 - [x] [M2-T15](tasks/m2-agent-sandbox/M2-T15-on-step-finish-cost.md) — onStepFinish → costLedger
 - [x] [M2-T16](tasks/m2-agent-sandbox/M2-T16-sandbox-gc-cron.md) — Sandbox GC cron
-- [ ] [M2-T17](tasks/m2-agent-sandbox/M2-T17-ui-agent-edit.md) — UI /agents/[id]/edit
+- [x] [M2-T17](tasks/m2-agent-sandbox/M2-T17-ui-agent-edit.md) — UI /agents/[id]/edit
 - [ ] [M2-T18](tasks/m2-agent-sandbox/M2-T18-ui-thread-detail.md) — UI /threads/[id] — tool calls + cost
 - [ ] [M2-T19](tasks/m2-agent-sandbox/M2-T19-smoke-m2.md) — **Smoke M2 FizzBuzz**
 
@@ -121,6 +121,8 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - **M0-T05 spike resultado**: `@djpanda/convex-tenants@0.1.6` + `@djpanda/convex-authz@0.1.7` integram bem com `@convex-dev/auth@0.0.91`. Peer-dep exige authz `0.1.7` (não `2.x`). API do `makeTenantsAPI` não tem `createInvitation`/`declineInvitation`/`revokeInvitation` — usa `inviteMember`/`cancelInvitation`/`resendInvitation`/`acceptInvitation`. Stability: OK pra seguir. Smoke test de E2E multi-tenant (user A cria org, user B não vê) **deferido pra M1-T01** quando teremos mutations próprias chamando `checkPermission`.
 
 ## Decisões tomadas durante execução
+
+- **M2-T17 (2026-04-24)** — UI `/agents/[id]/edit`. Stack igual ao resto do app (Next 15 App Router + inline styles) — **não trouxe shadcn/Tailwind v4** que a spec menciona: o repo inteiro usa inline styles (chat, settings/slack, onboarding), introduzir um design-system pra uma tela seria churn desproporcional. Fica pra uma task dedicada quando aparecer o segundo screen que peça. **Backend novo**: `updateAgent` (admin-only, patch de `systemPrompt` + `modelId`; provider derivado do catálogo pra (modelId, provider) nunca ficar inconsistente) substitui `updateSystemPrompt` no fluxo de UI mas o antigo fica (convex member-level, usado por paths internos). `supportedModels` em `convex/agents/_libs/` com 5 modelos Anthropic — teste de drift vs. `MODEL_PRICES` garante que nenhum modelo chegue ao dropdown sem preço (senão ledger zero-priceia todos os turns). `listCatalogWithBindings` faz join catalog × bindings pra UI mostrar TODOS os skills (enabled + disabled) vs. `listForAgent` que só devolve enabled (usado pelo `resolveTools`); adicionado `listAllForAgent` no repo pra não misturar as duas responsabilidades. **Aggregate** ganhou método `updateModel({modelId, modelProvider})` pra não mutar model via `getModel()` direto (pattern que já existia em `updateSystemPrompt`). **ModelSelector** pinga "legacy" como opção quando o modelId atual não está mais no catálogo — owner vê o que tá ativo e troca deliberadamente, em vez do dropdown re-selecionar silenciosamente o primeiro item. **Read-only gate** via `getUserRoles` — non-admin vê banner + todos os inputs disabled, matches precedent de `/settings/slack`. **MemoryEditor** só mostra `org`/`agent` scope (thread-scoped memories não pertencem a uma tela de agent-edit; `listForAgent` já filtra server-side, guard na UI é defesa-em-profundidade). **E2E spec não criada** — repo não tem playwright.config configurado (mesmo trade-off herdado de M1-T14); os 4 cases de acceptance foram implementados como convex-test vitest em `updateAgent.test.ts`: cobrem prompt persiste, skill toggle off removeu do `listResolvedForAgentInternal` (exatamente o que `resolveTools` lê, então "agente perde acesso"), memory alwaysOn aparece em `listAlwaysOnInternal`, non-admin → forbidden em todas as mutations (agent + skills + memory). 9 testes novos (2 supportedModels + 7 updateAgent), suite total 414+1.
 
 - **M2-T16 (2026-04-24)** — Sandbox GC cron. Daily 03:00 UTC (`crons.daily`) em vez de hourly — GC de VMs idle não tem urgência e 1 invocação/dia basta vs. 24. Horário escolhido pra cair fora do pico de US e EU. Split em 3 arquivos: `_libs/gc.ts` (pure fn `runGc`, `"use node"` porque importa `destroySandbox` do `vercel.ts`; testável sem convex-test injetando `listIdle` mock), `queries/listIdleInternal.ts` (internalQuery expondo `SandboxRepository.listIdle`), `actions/gc.ts` (internalAction `"use node"` que wireia `DefaultSandboxClient` + repo deps via `ctx.runQuery`/`runMutation` e delega ao `runGc`). **Desvio vs spec**: spec dizia `convex/sandbox/internal/gc.ts`, segui convenção do repo (`actions/` + `_libs/` + `queries/` — mesmo padrão de M2-T11/T12). CLI `pnpm sandbox:gc:dry` não foi criado: o action aceita `{dryRun:true}` e `pnpm exec convex run sandbox/actions/gc '{"dryRun":true}'` cobre o caso sem script duplicado. Error isolation por row — `destroySandbox` **sempre tombstone no finally** (herdado de M2-T11), então erro em um row ainda avança a partição `status=active` e o próximo sweep não reprocessa. Errors coletados em `{sandboxId, message}[]` e retornados; loop nunca aborta. `runGc` loga JSON estruturado por sandbox (`type:"sandbox.gc", status:"destroyed"|"error"|"summary"`) — Convex log search slice por status. Tests: cron registry assert (`crons.crons["sandbox:gc"].schedule` = `{type:"daily", hourUTC:3, minuteUTC:0}`) + 4 unit tests no pure fn (threshold filter 1d/5d/8d → só 8d, dry-run skip stop, erro isolado, empty pool). Suite total 405 + 1 skipped (live).
 

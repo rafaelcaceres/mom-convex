@@ -53,4 +53,11 @@ export class AgentAgg implements IAggregate<Agent> {
 		}
 		this.agent.systemPrompt = next;
 	}
+
+	updateModel(next: { modelId: string; modelProvider: string }): void {
+		if (!next.modelId.trim()) throw new Error("modelId cannot be empty");
+		if (!next.modelProvider.trim()) throw new Error("modelProvider cannot be empty");
+		this.agent.modelId = next.modelId;
+		this.agent.modelProvider = next.modelProvider;
+	}
 }
