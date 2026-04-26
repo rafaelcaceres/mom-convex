@@ -37,6 +37,7 @@ export async function postSlackMessage(args: {
 	botToken: string;
 	channel: string;
 	text: string;
+	blocks?: unknown[];
 	threadTs?: string;
 }): Promise<string> {
 	let attempt = 0;
@@ -63,6 +64,7 @@ export async function updateSlackMessage(args: {
 	channel: string;
 	ts: string;
 	text: string;
+	blocks?: unknown[];
 }): Promise<void> {
 	let attempt = 0;
 	while (true) {

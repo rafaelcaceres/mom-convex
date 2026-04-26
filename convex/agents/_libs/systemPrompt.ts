@@ -9,11 +9,11 @@ import type { Memory, MemoryScope } from "../../memory/domain/memory.model";
  * via `AgentPrompt.system`, which overrides the baked-in `instructions` on
  * the cached `Agent` instance.
  *
- * Base prompt is platform-agnostic. When `platform === "slack"`, an extra
- * `## Slack Formatting` block is appended so the model emits Slack mrkdwn
- * natively — minimizing the work the outbound `markdownToMrkdwn` adapter
- * has to do (it stays in place to resolve `@username` → `<@U123>` mentions
- * and as a safety net for any standard markdown that slips through).
+ * Base prompt is platform-agnostic. When `platform === "slack"`, a short
+ * `## Slack Channel` note is appended so the model knows mentions are
+ * resolved server-side and can drop emoji shortcodes. Output formatting
+ * (mrkdwn / Block Kit translation) is fully handled by the Slack adapter
+ * via `markdownToRichText`, so we no longer ask the model to learn mrkdwn.
  */
 
 export const MEMORY_CHAR_CAP = 10_000;
@@ -57,36 +57,11 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 }
 
 const SLACK_FORMATTING_BLOCK = [
-	"## CRITICAL — Output Format: Slack mrkdwn",
-	"Your response is sent directly to Slack as `text` in `chat.postMessage`. Slack does NOT render standard Markdown. You MUST emit Slack mrkdwn. Violating these rules makes the message look broken to the user.",
-	"",
-	"### Required syntax",
-	"- Bold: `*text*` (ONE asterisk on each side). NEVER `**text**`.",
-	"- Italic: `_text_` (underscores). NEVER `*text*` for italic.",
-	"- Strikethrough: `~text~` (ONE tilde, not two).",
-	"- Inline code: `` `code` ``.",
-	"- Code block: ` ``` ` on its own line, content, ` ``` ` on its own line. Do NOT put a language tag — Slack ignores it and shows it as the first line.",
-	"- Links: `<https://example.com|label>`. NEVER `[label](https://example.com)`.",
-	"- Mentions: write `@username` (the adapter resolves it).",
-	"- Bullet list: `- item` per line. Numbered: `1. item`.",
-	"- Quote: `> text` per line.",
-	"- Emojis: Slack shortcodes like `:white_check_mark:`, `:warning:`, `:rocket:`, `:slightly_smiling_face:`. Unicode emojis also work.",
-	"",
-	"### Forbidden — Slack ignores or renders these as raw text",
-	"- Headings: `#`, `##`, `###`, `####`. Use a `*bold line*` on its own line as a section title.",
-	"- Markdown tables (`| col | col |` / `| --- | --- |`). Slack has NO table support. Use a list, or a fenced code block with aligned text, or one bold label per line followed by the value.",
-	"- Horizontal rules: `---`, `***`, `___`. Insert a blank line for separation.",
-	"- HTML tags (`<br>`, `<b>`, etc.).",
-	"- Double-asterisk bold (`**text**`) and bracket links (`[text](url)`) — these appear as literal characters.",
-	"",
-	"### Examples (wrong → right)",
-	"- `**Pierre Bourdieu**` → `*Pierre Bourdieu*`",
-	"- `### Caso 1: A vs B` → `*Caso 1: A vs B*`",
-	"- `[Wikipedia](https://wiki.org)` → `<https://wiki.org|Wikipedia>`",
-	"- `| Aspecto | A | B |` (table) → use bullets: `- *Aspecto:* A vs B`",
-	"- `---` (rule) → blank line",
-	"",
-	"Comply with these rules on EVERY response in this conversation, including the very first sentence. Do not apologize for or comment on the format.",
+	"## Slack Channel",
+	"Your reply will be posted to a Slack channel. Write standard Markdown freely — bold, italic, lists, links, code, blockquotes, and tables are all rendered correctly by the adapter.",
+	"- Mentions: write `@username` (resolved server-side to a real Slack mention).",
+	"- Emojis: Slack shortcodes like `:white_check_mark:`, `:warning:`, `:rocket:` are welcome (and unicode emojis work too).",
+	"- Avoid: HTML tags and horizontal rules (`---`) — Slack ignores them.",
 ].join("\n");
 
 function renderUsers(users: UserInfo[]): string | null {

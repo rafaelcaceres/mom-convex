@@ -222,7 +222,7 @@ describe("M2-T09 buildSystemPrompt", () => {
 		}
 	});
 
-	it("includes Slack mrkdwn formatting rules when platform === 'slack'", () => {
+	it("appends a short Slack channel note when platform === 'slack'", () => {
 		const prompt = buildSystemPrompt({
 			agent: { name: "n", systemPrompt: "You help teams." },
 			users: [],
@@ -231,19 +231,15 @@ describe("M2-T09 buildSystemPrompt", () => {
 			memories: [],
 			platform: "slack",
 		});
-		expect(prompt).toContain("## CRITICAL — Output Format: Slack mrkdwn");
-		expect(prompt).toContain("`*text*`");
-		expect(prompt).toContain("`_text_`");
-		expect(prompt).toContain("<https://example.com|label>");
+		expect(prompt).toContain("## Slack Channel");
 		expect(prompt).toContain("@username");
-		expect(prompt).toMatch(/NEVER `\*\*text\*\*`/);
-		// Forbidden patterns must be called out so the model stops emitting them.
-		expect(prompt).toContain("Markdown tables");
-		expect(prompt).toContain("Horizontal rules");
-		expect(prompt).toContain("Pierre Bourdieu");
+		expect(prompt).toContain(":white_check_mark:");
+		// We no longer teach the model mrkdwn — Block Kit translation handles it.
+		expect(prompt).not.toMatch(/mrkdwn/i);
+		expect(prompt).not.toMatch(/CRITICAL/);
 	});
 
-	it("places Slack formatting block right after agent.systemPrompt and BEFORE Tools/Memory", () => {
+	it("places Slack note right after agent.systemPrompt and BEFORE Tools/Memory", () => {
 		const prompt = buildSystemPrompt({
 			agent: { name: "n", systemPrompt: "TOPLINE" },
 			users: [],
@@ -253,7 +249,7 @@ describe("M2-T09 buildSystemPrompt", () => {
 			platform: "slack",
 		});
 		const iAgent = prompt.indexOf("TOPLINE");
-		const iSlack = prompt.indexOf("## CRITICAL — Output Format: Slack mrkdwn");
+		const iSlack = prompt.indexOf("## Slack Channel");
 		const iTools = prompt.indexOf("## Tools");
 		const iMemory = prompt.indexOf("## Memory");
 		expect(iAgent).toBe(0);

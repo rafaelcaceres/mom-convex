@@ -82,12 +82,15 @@ export interface ChatPostMessageResponse {
 
 /**
  * POST chat.postMessage. Thin wrapper — callers own retry + token-decrypt.
+ * Pass `blocks` for structured Block Kit (e.g. `rich_text`); `text` is then
+ * used only as the notification / accessibility fallback.
  * See https://api.slack.com/methods/chat.postMessage.
  */
 export async function chatPostMessage(args: {
 	botToken: string;
 	channel: string;
 	text: string;
+	blocks?: unknown[];
 	threadTs?: string;
 	fetchImpl?: typeof fetch;
 }): Promise<ChatPostMessageResponse> {
@@ -96,6 +99,7 @@ export async function chatPostMessage(args: {
 		channel: args.channel,
 		text: args.text,
 	};
+	if (args.blocks && args.blocks.length > 0) payload.blocks = args.blocks;
 	if (args.threadTs) payload.thread_ts = args.threadTs;
 	const res = await doFetch("https://slack.com/api/chat.postMessage", {
 		method: "POST",
@@ -126,10 +130,16 @@ export async function chatUpdate(args: {
 	channel: string;
 	ts: string;
 	text: string;
+	blocks?: unknown[];
 	fetchImpl?: typeof fetch;
 }): Promise<ChatPostMessageResponse> {
 	const doFetch = args.fetchImpl ?? fetch;
-	const payload = { channel: args.channel, ts: args.ts, text: args.text };
+	const payload: Record<string, unknown> = {
+		channel: args.channel,
+		ts: args.ts,
+		text: args.text,
+	};
+	if (args.blocks && args.blocks.length > 0) payload.blocks = args.blocks;
 	const res = await doFetch("https://slack.com/api/chat.update", {
 		method: "POST",
 		headers: {

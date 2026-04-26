@@ -10,7 +10,7 @@ import { internalAction } from "../../customFunctions";
 import { buildToolSet } from "../../skills/_libs/resolveTools";
 import { formatReasoningReply } from "../../slack/_libs/formatReasoningReply";
 import { formatToolReply } from "../../slack/_libs/formatToolReply";
-import { markdownToMrkdwn } from "../../slack/_libs/markdownToMrkdwn";
+import { markdownToRichText } from "../../slack/_libs/markdownToRichText";
 import {
 	type SlackPainter,
 	buildReasoningSnippet,
@@ -111,9 +111,6 @@ const handleIncoming = internalAction({
 			})),
 			platform: thread.binding.type,
 		});
-		// DIAG motivo-1: confirmar que o bloco Slack chegou ao prompt enviado.
-		console.log("[DIAG/motivo1] platform=", thread.binding.type);
-		console.log("[DIAG/motivo1] systemPrompt.tail=", systemPrompt.slice(-800));
 
 		// Slack outbound state for the turn. Stays null for non-slack bindings
 		// so the painter / chunk handlers skip the Slack branch entirely.
@@ -288,11 +285,14 @@ const handleIncoming = internalAction({
 						// chronological: thought → action → result.
 						const replyAnchor = painter.getMainTs() ?? slackOutbound.threadTs;
 						if (hasReasoning) {
+							const md = formatReasoningReply(reasoningText);
+							const block = markdownToRichText(md);
 							await postSlackMessage({
 								botToken: slackOutbound.botToken,
 								channel: slackOutbound.channelId,
 								threadTs: replyAnchor,
-								text: markdownToMrkdwn(formatReasoningReply(reasoningText)),
+								text: md,
+								blocks: block ? [block] : undefined,
 							});
 						}
 						for (const call of step.toolCalls) {
@@ -308,11 +308,13 @@ const handleIncoming = internalAction({
 								error: "error" in call ? call.error : undefined,
 								durationMs,
 							});
+							const block = markdownToRichText(reply);
 							await postSlackMessage({
 								botToken: slackOutbound.botToken,
 								channel: slackOutbound.channelId,
 								threadTs: replyAnchor,
-								text: markdownToMrkdwn(reply),
+								text: reply,
+								blocks: block ? [block] : undefined,
 							});
 						}
 					}
@@ -325,16 +327,25 @@ const handleIncoming = internalAction({
 		}
 
 		if (painter) {
-			// DIAG motivo-1: comparar saída bruta do LLM vs após markdownToMrkdwn.
-			const converted = replyText.length > 0 ? markdownToMrkdwn(replyText) : "";
-			console.log("[DIAG/motivo1] replyText.raw=", JSON.stringify(replyText.slice(0, 1200)));
-			console.log("[DIAG/motivo1] replyText.mrkdwn=", JSON.stringify(converted.slice(0, 1200)));
-			const finalText = streamErr
-				? "_(erro ao gerar resposta — tente novamente)_"
-				: replyText.length > 0
-					? converted
-					: "_(resposta vazia)_";
-			await painter.flushFinal(finalText);
+			if (streamErr) {
+				await painter.flushFinal("_(erro ao gerar resposta — tente novamente)_");
+			} else if (replyText.length === 0) {
+				await painter.flushFinal("_(resposta vazia)_");
+			} else {
+				const block = markdownToRichText(replyText);
+				if (block) {
+					await painter.flushFinalBlocks({
+						blocks: [block],
+						// `text` is sent alongside `blocks` only as the notification /
+						// accessibility fallback. Keep it short — Slack uses it for
+						// push notifications and screen readers, not for the rendered
+						// message body.
+						fallbackText: replyText.slice(0, 200),
+					});
+				} else {
+					await painter.flushFinal(replyText);
+				}
+			}
 		}
 
 		// Re-throw so the scheduler's retry/backoff still kicks in and

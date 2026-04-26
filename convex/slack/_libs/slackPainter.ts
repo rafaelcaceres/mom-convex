@@ -87,6 +87,15 @@ export interface SlackPainter {
 	markReasoning(snippet: string): void;
 	setWorking(value: boolean): void;
 	flushFinal(finalMrkdwn: string): Promise<void>;
+	/**
+	 * Final flush using Slack Block Kit `rich_text` instead of mrkdwn `text`.
+	 * Renders the agent's output via a structured AST (no string-level
+	 * markdown→mrkdwn translation), which is the only way to get reliable
+	 * Slack rendering for nested lists, code blocks, links, etc.
+	 * `fallbackText` is passed in the `text` field for desktop notifications
+	 * and accessibility tooling.
+	 */
+	flushFinalBlocks(args: { blocks: unknown[]; fallbackText: string }): Promise<void>;
 	getMainTs(): string | null;
 }
 
@@ -274,6 +283,40 @@ export function createSlackPainter(args: CreateSlackPainterArgs): SlackPainter {
 						}
 					}
 				});
+			await updateChain;
+		},
+
+		async flushFinalBlocks({
+			blocks,
+			fallbackText,
+		}: { blocks: unknown[]; fallbackText: string }): Promise<void> {
+			finalized = true;
+			working = false;
+			updateChain = updateChain.then(async () => {
+				try {
+					if (mainTs === null) {
+						const ts = await postFn({
+							botToken: args.botToken,
+							channel: args.channelId,
+							threadTs: args.threadTs,
+							text: fallbackText,
+							blocks,
+						});
+						mainTs = ts;
+						await args.persistMainTs(ts);
+					} else {
+						await updateFn({
+							botToken: args.botToken,
+							channel: args.channelId,
+							ts: mainTs,
+							text: fallbackText,
+							blocks,
+						});
+					}
+				} catch (err) {
+					console.warn("[slackPainter] flushFinalBlocks failed", err);
+				}
+			});
 			await updateChain;
 		},
 

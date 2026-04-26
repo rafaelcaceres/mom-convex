@@ -32,6 +32,9 @@ importers:
       '@djpanda/convex-tenants':
         specifier: ^0.1.6
         version: 0.1.6(@djpanda/convex-authz@0.1.7(convex@1.35.1(react@19.2.5))(react@19.2.5))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(clsx@2.1.1)(convex@1.35.1(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@vercel/sandbox':
         specifier: ^1.10.0
         version: 1.10.0
@@ -59,6 +62,12 @@ importers:
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
       zod:
         specifier: ^4.3.6
         version: 4.3.6

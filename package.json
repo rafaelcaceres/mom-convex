@@ -28,6 +28,7 @@
 		"@convex-dev/auth": "^0.0.91",
 		"@djpanda/convex-authz": "^0.1.7",
 		"@djpanda/convex-tenants": "^0.1.6",
+		"@types/mdast": "^4.0.4",
 		"@vercel/sandbox": "^1.10.0",
 		"ai": "^6.0.168",
 		"convex": "^1.18.0",
@@ -37,6 +38,8 @@
 		"react-dom": "^19.0.0",
 		"react-markdown": "^10.1.0",
 		"remark-gfm": "^4.0.1",
+		"remark-parse": "^11.0.0",
+		"unified": "^11.0.5",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
