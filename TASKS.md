@@ -75,6 +75,8 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T17](tasks/m2-agent-sandbox/M2-T17-ui-agent-edit.md) — UI /agents/[id]/edit
 - [ ] [M2-T18](tasks/m2-agent-sandbox/M2-T18-ui-thread-detail.md) — UI /threads/[id] — tool calls + cost
 - [ ] [M2-T19](tasks/m2-agent-sandbox/M2-T19-smoke-m2.md) — **Smoke M2 FizzBuzz**
+- [x] [M2-T20](tasks/m2-agent-sandbox/M2-T20-slack-user-cache.md) — Slack user-cache + mention resolution
+- [x] [M2-T21](tasks/m2-agent-sandbox/M2-T21-slack-tool-duration.md) — Slack tool reply — duração da execução
 
 **M2 done gate:** agent roda FizzBuzz em Python no sandbox; costLedger populado; UIs de edit/detail usáveis.
 
@@ -114,6 +116,8 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 ## Follow-ups / backlog (fora da contagem de milestone)
 
 - [ ] [F-01](tasks/followups/F-01-catalog-sync-utility.md) — Catalog sync utility (`resyncSkillCatalog`) — surfaced por M2-T08 quando o zod schema de `memory.search` mudou e o `skillCatalog` ficou stale silenciosamente.
+- [ ] [F-02](tasks/followups/F-02-chat-inline-tool-calls.md) — Chat com tool calls colapsáveis inline — surfaced em review pós-M2-T18: `/threads/[id]` em página separada quebra o fluxo, certo é inline no `/chat` colapsado por default (reusa `ToolCallCard`/`UsageBadge`/`listThreadEvents`).
+- [ ] [F-03](tasks/followups/F-03-slack-tool-call-thread-replies.md) — Slack: tool calls como thread replies estilo pi-mono — paridade Slack do F-02; main message limpa + replies sob ela carregando args/result, com `chat.update` pra editar em retries. Domain ganha `Thread.binding.parentTs?`.
 
 ## Tasks bloqueadas / riscos ativos
 

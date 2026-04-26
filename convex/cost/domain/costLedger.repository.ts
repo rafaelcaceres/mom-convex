@@ -38,4 +38,19 @@ export interface ICostLedgerRepository extends IRepository<"costLedger", CostLed
 		ctx: QueryCtx,
 		args: { orgId: string; from: number; to: number; limit?: number },
 	): Promise<Array<{ toolName: string; sum: CostSum }>>;
+
+	/**
+	 * Per-thread roll-up for the thread detail page (M2-T18). Returns the
+	 * full sum of ledger rows for the thread plus a tool-name breakdown
+	 * (only rows with `toolName` participate). Bounded by an internal row
+	 * cap; if `truncated` trips the UI shows a partial-stats warning.
+	 */
+	summarizeByThread(
+		ctx: QueryCtx,
+		args: { threadId: Id<"threads"> },
+	): Promise<{
+		sum: CostSum;
+		byTool: Array<{ toolName: string; sum: CostSum }>;
+		truncated: boolean;
+	}>;
 }

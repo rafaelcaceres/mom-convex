@@ -78,3 +78,34 @@ describe("M1-T02 ThreadAgg", () => {
 		expect(agg.getModel().agentThreadId).toBe("new");
 	});
 });
+
+describe("F-03 ThreadAgg.setParentTs", () => {
+	it("sets parentTs on a slack binding", () => {
+		const agg = new ThreadAgg(
+			makeThread({
+				binding: { type: "slack", installId: "si_1", channelId: "C1", threadTs: "1.1" },
+				bindingKey: "slack:si_1:C1:1.1",
+			}),
+		);
+		agg.setParentTs("999.0");
+		const b = agg.getModel().binding;
+		expect(b.type).toBe("slack");
+		if (b.type === "slack") {
+			expect(b.parentTs).toBe("999.0");
+			// threadTs (the user's slack thread) untouched.
+			expect(b.threadTs).toBe("1.1");
+		}
+	});
+
+	it("rejects non-slack bindings", () => {
+		const webAgg = new ThreadAgg(makeThread());
+		expect(() => webAgg.setParentTs("999.0")).toThrow(/slack/);
+		const eventAgg = new ThreadAgg(
+			makeThread({
+				binding: { type: "event", eventId: "evt_1" },
+				bindingKey: "event:evt_1",
+			}),
+		);
+		expect(() => eventAgg.setParentTs("999.0")).toThrow(/slack/);
+	});
+});

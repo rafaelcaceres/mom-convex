@@ -33,6 +33,21 @@ async function collectInRange(
 	return { rows, truncated };
 }
 
+async function collectByThread(
+	ctx: QueryCtx,
+	threadId: Id<"threads">,
+): Promise<{ rows: CostLedgerAgg[]; truncated: boolean }> {
+	const docs = await ctx.db
+		.query("costLedger")
+		.withIndex("by_thread", (q) => q.eq("threadId", threadId))
+		.take(MAX_ROWS_PER_QUERY + 1);
+	const truncated = docs.length > MAX_ROWS_PER_QUERY;
+	const rows = (truncated ? docs.slice(0, MAX_ROWS_PER_QUERY) : docs).map(
+		(doc) => new CostLedgerAgg(doc),
+	);
+	return { rows, truncated };
+}
+
 function topNByCost<K extends string>(
 	groups: Map<K, CostSum>,
 	limit: number,
@@ -79,5 +94,21 @@ export const CostLedgerRepository: ICostLedgerRepository = {
 			toolName: key,
 			sum,
 		}));
+	},
+
+	summarizeByThread: async (ctx, { threadId }) => {
+		const { rows, truncated } = await collectByThread(ctx, threadId);
+		const sum = rows.reduce((acc, r) => addToSum(acc, r.getModel()), { ...EMPTY_COST_SUM });
+		const groups = new Map<string, CostSum>();
+		for (const agg of rows) {
+			const model = agg.getModel();
+			if (!model.toolName) continue;
+			const prev = groups.get(model.toolName) ?? { ...EMPTY_COST_SUM };
+			groups.set(model.toolName, addToSum(prev, model));
+		}
+		const byTool = [...groups.entries()]
+			.map(([toolName, s]) => ({ toolName, sum: s }))
+			.sort((a, b) => b.sum.costUsd - a.sum.costUsd);
+		return { sum, byTool, truncated };
 	},
 };

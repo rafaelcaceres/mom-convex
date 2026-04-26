@@ -194,7 +194,7 @@ describe("M2-T09 buildSystemPrompt", () => {
 		expect(afterMemoryHeader.length).toBeLessThan(MEMORY_CHAR_CAP + 500);
 	});
 
-	it("stays platform-agnostic (no Slack / Discord / mrkdwn references)", () => {
+	it("stays platform-agnostic when platform is unset (no Slack / Discord / mrkdwn references)", () => {
 		const prompt = buildSystemPrompt({
 			agent: { name: "n", systemPrompt: "You help teams." },
 			users: [{ id: "U1", name: "Alice" }],
@@ -205,6 +205,61 @@ describe("M2-T09 buildSystemPrompt", () => {
 		expect(prompt).not.toMatch(/slack/i);
 		expect(prompt).not.toMatch(/discord/i);
 		expect(prompt).not.toMatch(/mrkdwn/i);
+	});
+
+	it("stays platform-agnostic for non-Slack platforms (web, event)", () => {
+		for (const platform of ["web", "event"] as const) {
+			const prompt = buildSystemPrompt({
+				agent: { name: "n", systemPrompt: "You help teams." },
+				users: [],
+				channels: [],
+				skills: [],
+				memories: [],
+				platform,
+			});
+			expect(prompt, `platform=${platform}`).not.toMatch(/slack/i);
+			expect(prompt, `platform=${platform}`).not.toMatch(/mrkdwn/i);
+		}
+	});
+
+	it("includes Slack mrkdwn formatting rules when platform === 'slack'", () => {
+		const prompt = buildSystemPrompt({
+			agent: { name: "n", systemPrompt: "You help teams." },
+			users: [],
+			channels: [],
+			skills: [],
+			memories: [],
+			platform: "slack",
+		});
+		expect(prompt).toContain("## CRITICAL — Output Format: Slack mrkdwn");
+		expect(prompt).toContain("`*text*`");
+		expect(prompt).toContain("`_text_`");
+		expect(prompt).toContain("<https://example.com|label>");
+		expect(prompt).toContain("@username");
+		expect(prompt).toMatch(/NEVER `\*\*text\*\*`/);
+		// Forbidden patterns must be called out so the model stops emitting them.
+		expect(prompt).toContain("Markdown tables");
+		expect(prompt).toContain("Horizontal rules");
+		expect(prompt).toContain("Pierre Bourdieu");
+	});
+
+	it("places Slack formatting block right after agent.systemPrompt and BEFORE Tools/Memory", () => {
+		const prompt = buildSystemPrompt({
+			agent: { name: "n", systemPrompt: "TOPLINE" },
+			users: [],
+			channels: [],
+			skills: [{ skillKey: "k", name: "n", description: "d" }],
+			memories: [makeMemory({ scope: "org", content: "fact" })],
+			platform: "slack",
+		});
+		const iAgent = prompt.indexOf("TOPLINE");
+		const iSlack = prompt.indexOf("## CRITICAL — Output Format: Slack mrkdwn");
+		const iTools = prompt.indexOf("## Tools");
+		const iMemory = prompt.indexOf("## Memory");
+		expect(iAgent).toBe(0);
+		expect(iSlack).toBeGreaterThan(iAgent);
+		expect(iSlack).toBeLessThan(iTools);
+		expect(iSlack).toBeLessThan(iMemory);
 	});
 
 	it("skips users/channels when empty but always renders tools + memory", () => {

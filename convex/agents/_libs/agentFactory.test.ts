@@ -44,7 +44,7 @@ describe("M2-T01 agentFactory", () => {
 		expect(a1).not.toBe(a2);
 	});
 
-	it("unsupported provider throws (only anthropic supported in M2-T01)", () => {
+	it("unsupported provider throws", () => {
 		expect(() => getAgent({ ...base, modelProvider: "openai" })).toThrow(/provider/i);
 	});
 
@@ -52,5 +52,15 @@ describe("M2-T01 agentFactory", () => {
 		const a = getAgent(base);
 		const model = a.options.languageModel as { provider?: string } | undefined;
 		expect(model?.provider).toMatch(/anthropic/i);
+	});
+
+	it("deepseek provider produces a model whose provider reflects deepseek", () => {
+		const a = getAgent({
+			...base,
+			modelId: "deepseek-chat",
+			modelProvider: "deepseek",
+		});
+		const model = a.options.languageModel as { provider?: string } | undefined;
+		expect(model?.provider).toMatch(/deepseek/i);
 	});
 });

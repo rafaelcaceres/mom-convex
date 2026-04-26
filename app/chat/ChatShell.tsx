@@ -8,6 +8,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { MessageInput } from "./MessageInput";
 import { MessageList } from "./MessageList";
 import { ThreadList } from "./ThreadList";
+import { UsagePanel } from "./UsagePanel";
 
 export function ChatShell() {
 	const router = useRouter();
@@ -60,6 +61,7 @@ export function ChatShell() {
 			>
 				{activeThreadId ? (
 					<>
+						<UsagePanel threadId={activeThreadId} />
 						<MessageList threadId={activeThreadId} />
 						<MessageInput threadId={activeThreadId} />
 					</>

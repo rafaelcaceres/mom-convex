@@ -22,6 +22,11 @@ export const SlackInstallRepository: ISlackInstallRepository = {
 		return docs.map((doc) => new SlackInstallAgg(doc));
 	},
 
+	listAll: async (ctx) => {
+		const docs = await ctx.db.query("slackInstalls").collect();
+		return docs.map((doc) => new SlackInstallAgg(doc));
+	},
+
 	upsertByTeamId: async (ctx, data) => {
 		const existing = await ctx.db
 			.query("slackInstalls")

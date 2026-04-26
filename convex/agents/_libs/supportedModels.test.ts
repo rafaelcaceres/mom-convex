@@ -12,6 +12,16 @@ describe("supportedModels", () => {
 
 	it("isSupportedModel matches catalog", () => {
 		expect(isSupportedModel("claude-sonnet-4-5")).toBe(true);
+		expect(isSupportedModel("gemini-2.5-pro")).toBe(true);
+		expect(isSupportedModel("deepseek-chat")).toBe(true);
 		expect(isSupportedModel("gpt-4-turbo")).toBe(false);
+	});
+
+	it("includes at least one google-provider model (used to exercise reasoning)", () => {
+		expect(SUPPORTED_MODELS.some((m) => m.provider === "google")).toBe(true);
+	});
+
+	it("includes at least one deepseek-provider model", () => {
+		expect(SUPPORTED_MODELS.some((m) => m.provider === "deepseek")).toBe(true);
 	});
 });

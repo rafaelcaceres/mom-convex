@@ -209,4 +209,106 @@ describe("M2-T14 CostLedgerRepository", () => {
 		);
 		expect(top).toEqual([]);
 	});
+
+	it("summarizeByThread sums all rows of one thread + groups tools, ignoring siblings", async () => {
+		const t = newTest();
+		const fx = await seedFixtures(t);
+		// thread1: 1 LLM step + 2 tool calls (different tools).
+		await insertRow(
+			t,
+			entry(fx, {
+				threadId: fx.threadId1,
+				createdAt: 100,
+				stepType: "text-generation",
+				costUsd: 0.005,
+				tokensIn: 100,
+				tokensOut: 50,
+			}),
+		);
+		await insertRow(
+			t,
+			entry(fx, {
+				threadId: fx.threadId1,
+				createdAt: 110,
+				stepType: "tool-call",
+				toolName: "http.fetch",
+				costUsd: 0,
+				tokensIn: 0,
+				tokensOut: 0,
+			}),
+		);
+		await insertRow(
+			t,
+			entry(fx, {
+				threadId: fx.threadId1,
+				createdAt: 120,
+				stepType: "tool-call",
+				toolName: "sandbox.bash",
+				costUsd: 0,
+				tokensIn: 0,
+				tokensOut: 0,
+			}),
+		);
+		// thread2: must be excluded entirely.
+		await insertRow(
+			t,
+			entry(fx, { threadId: fx.threadId2, createdAt: 100, costUsd: 0.999, tokensIn: 999 }),
+		);
+
+		const result = await t.run(async (ctx) =>
+			CostLedgerRepository.summarizeByThread(ctx, { threadId: fx.threadId1 }),
+		);
+
+		expect(result.truncated).toBe(false);
+		expect(result.sum.costUsd).toBeCloseTo(0.005, 5);
+		expect(result.sum.tokensIn).toBe(100);
+		expect(result.sum.tokensOut).toBe(50);
+		expect(result.sum.count).toBe(3);
+		expect(result.byTool).toHaveLength(2);
+		// Both tools have same cost (0); order is by costUsd desc — ties allow either order
+		// but each must appear with count=1.
+		const byName = Object.fromEntries(result.byTool.map((b) => [b.toolName, b.sum.count]));
+		expect(byName["http.fetch"]).toBe(1);
+		expect(byName["sandbox.bash"]).toBe(1);
+	});
+
+	it("summarizeByThread orders byTool by costUsd desc", async () => {
+		const t = newTest();
+		const fx = await seedFixtures(t);
+		await insertRow(
+			t,
+			entry(fx, {
+				threadId: fx.threadId1,
+				createdAt: 100,
+				toolName: "cheap.tool",
+				costUsd: 0.001,
+			}),
+		);
+		await insertRow(
+			t,
+			entry(fx, {
+				threadId: fx.threadId1,
+				createdAt: 200,
+				toolName: "spendy.tool",
+				costUsd: 0.05,
+			}),
+		);
+
+		const result = await t.run(async (ctx) =>
+			CostLedgerRepository.summarizeByThread(ctx, { threadId: fx.threadId1 }),
+		);
+		expect(result.byTool[0]?.toolName).toBe("spendy.tool");
+		expect(result.byTool[1]?.toolName).toBe("cheap.tool");
+	});
+
+	it("summarizeByThread returns empty sum + empty byTool for thread with no rows", async () => {
+		const t = newTest();
+		const fx = await seedFixtures(t);
+		const result = await t.run(async (ctx) =>
+			CostLedgerRepository.summarizeByThread(ctx, { threadId: fx.threadId1 }),
+		);
+		expect(result.sum.count).toBe(0);
+		expect(result.sum.costUsd).toBe(0);
+		expect(result.byTool).toEqual([]);
+	});
 });

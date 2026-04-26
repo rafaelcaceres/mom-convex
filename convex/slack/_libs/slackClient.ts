@@ -115,6 +115,77 @@ export async function chatPostMessage(args: {
 	};
 }
 
+/**
+ * POST chat.update — edit a previously posted bot message in place. Same
+ * response/error/retry shape as `chatPostMessage`. Used by F-03 to swap a
+ * placeholder anchor message for the final assistant text after a turn
+ * with tool calls. See https://api.slack.com/methods/chat.update.
+ */
+export async function chatUpdate(args: {
+	botToken: string;
+	channel: string;
+	ts: string;
+	text: string;
+	fetchImpl?: typeof fetch;
+}): Promise<ChatPostMessageResponse> {
+	const doFetch = args.fetchImpl ?? fetch;
+	const payload = { channel: args.channel, ts: args.ts, text: args.text };
+	const res = await doFetch("https://slack.com/api/chat.update", {
+		method: "POST",
+		headers: {
+			"content-type": "application/json; charset=utf-8",
+			authorization: `Bearer ${args.botToken}`,
+		},
+		body: JSON.stringify(payload),
+	});
+	const retryAfter = res.headers.get("retry-after");
+	const retryAfterSec = retryAfter ? Number(retryAfter) : undefined;
+	const json = (await res.json()) as ChatPostMessageResult;
+	return {
+		result: json,
+		status: res.status,
+		retryAfterSec: Number.isFinite(retryAfterSec) ? retryAfterSec : undefined,
+	};
+}
+
+export interface SlackUserListMember {
+	id: string;
+	name: string;
+	deleted?: boolean;
+	is_bot?: boolean;
+	profile?: { display_name?: string; real_name?: string };
+}
+
+export interface UsersListOk {
+	ok: true;
+	members: SlackUserListMember[];
+	response_metadata?: { next_cursor?: string };
+}
+
+export type UsersListResult = UsersListOk | SlackApiError;
+
+/**
+ * GET users.list — paginated workspace directory. Slack recommends batches
+ * of 200 with cursor pagination. Returns one page; caller iterates by
+ * passing the returned `next_cursor` until it's empty.
+ * See https://api.slack.com/methods/users.list.
+ */
+export async function usersList(args: {
+	botToken: string;
+	cursor?: string;
+	limit?: number;
+	fetchImpl?: typeof fetch;
+}): Promise<UsersListResult> {
+	const doFetch = args.fetchImpl ?? fetch;
+	const params = new URLSearchParams({ limit: String(args.limit ?? 200) });
+	if (args.cursor) params.set("cursor", args.cursor);
+	const res = await doFetch(`https://slack.com/api/users.list?${params.toString()}`, {
+		method: "GET",
+		headers: { authorization: `Bearer ${args.botToken}` },
+	});
+	return (await res.json()) as UsersListResult;
+}
+
 export interface AuthRevokeOk {
 	ok: true;
 	revoked: boolean;

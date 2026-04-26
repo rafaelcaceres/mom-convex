@@ -168,18 +168,33 @@ describe("M1-T15 smoke: end-to-end echo loop + cross-tenant isolation", () => {
 		).rejects.toThrow(/Forbidden/);
 	});
 
-	it("slack echo: app_mention → chat.postMessage with echo text + thread_ts preserved", async () => {
+	it("slack echo: app_mention → live-painted reply, thread_ts preserved, final text via chat.update", async () => {
 		const t = newTest();
 		await seedOrgWithAgent(t, "org_A");
 		await seedSlackInstall(t, "org_A", "T_A", "UBOT");
 
 		const posted: Array<Record<string, unknown>> = [];
+		const updated: Array<Record<string, unknown>> = [];
 		server.use(
 			http.post("https://slack.com/api/chat.postMessage", async ({ request }) => {
 				const body = (await request.json()) as Record<string, unknown>;
 				posted.push(body);
 				return HttpResponse.json({ ok: true, channel: body.channel, ts: "9.9" });
 			}),
+			http.post("https://slack.com/api/chat.update", async ({ request }) => {
+				const body = (await request.json()) as Record<string, unknown>;
+				updated.push(body);
+				return HttpResponse.json({ ok: true, channel: body.channel, ts: body.ts });
+			}),
+			// First-event hydration of `slackUserCache` fires `syncUsers` in
+			// the background; stub a trivial directory so it doesn't log noise.
+			http.get("https://slack.com/api/users.list", () =>
+				HttpResponse.json({
+					ok: true,
+					members: [{ id: "U_HUMAN", name: "human" }],
+					response_metadata: { next_cursor: "" },
+				}),
+			),
 		);
 
 		const body = JSON.stringify({
@@ -205,12 +220,15 @@ describe("M1-T15 smoke: end-to-end echo loop + cross-tenant isolation", () => {
 
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
+		// Painter `start()` posts the anchor eagerly ("thinking..."
+		// placeholder), streaming text and the final flushFinal land via
+		// chat.update.
 		expect(posted).toHaveLength(1);
-		expect(posted[0]).toMatchObject({
-			channel: "C_A",
-			thread_ts: "0.5",
-			text: "echo: hi",
-		});
+		expect(posted[0]).toMatchObject({ channel: "C_A", thread_ts: "0.5" });
+		expect(posted[0]?.text).toBe("_thinking..._");
+		expect(updated.length).toBeGreaterThanOrEqual(1);
+		const lastUpdate = updated.at(-1);
+		expect(lastUpdate).toMatchObject({ channel: "C_A", ts: "9.9", text: "echo: hi" });
 	});
 
 	it("slack dedupe: same event_id delivered twice produces a single reply", async () => {
@@ -224,6 +242,17 @@ describe("M1-T15 smoke: end-to-end echo loop + cross-tenant isolation", () => {
 				hits += 1;
 				return HttpResponse.json({ ok: true, channel: "C_A", ts: `${hits}.0` });
 			}),
+			http.post("https://slack.com/api/chat.update", async ({ request }) => {
+				const body = (await request.json()) as Record<string, unknown>;
+				return HttpResponse.json({ ok: true, channel: "C_A", ts: body.ts });
+			}),
+			http.get("https://slack.com/api/users.list", () =>
+				HttpResponse.json({
+					ok: true,
+					members: [{ id: "U_HUMAN", name: "human" }],
+					response_metadata: { next_cursor: "" },
+				}),
+			),
 		);
 
 		const body = JSON.stringify({

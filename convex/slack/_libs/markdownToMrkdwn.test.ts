@@ -44,4 +44,48 @@ describe("M1-T10 markdownToMrkdwn", () => {
 	it("leaves inline code spans untouched", () => {
 		expect(markdownToMrkdwn("a `**raw**` b")).toBe("a `**raw**` b");
 	});
+
+	it("converts headings (#, ##, ###, ####) to *bold* lines", () => {
+		expect(markdownToMrkdwn("# Title")).toBe("*Title*");
+		expect(markdownToMrkdwn("## Subtitle")).toBe("*Subtitle*");
+		expect(markdownToMrkdwn("### Section")).toBe("*Section*");
+		expect(markdownToMrkdwn("#### Nested")).toBe("*Nested*");
+	});
+
+	it("strips trailing `#` markers from headings", () => {
+		expect(markdownToMrkdwn("## Title ##")).toBe("*Title*");
+	});
+
+	it("converts headings inside multi-line content without touching body", () => {
+		const input = "intro\n### Script criado (`fibonacci.py`)\nbody";
+		const output = markdownToMrkdwn(input);
+		expect(output).toContain("*Script criado (`fibonacci.py`)*");
+		expect(output).toContain("intro");
+		expect(output).toContain("body");
+		expect(output).not.toContain("###");
+	});
+
+	it("does not treat `#` inside code fences as a heading", () => {
+		const input = "```\n# not a heading\n```";
+		expect(markdownToMrkdwn(input)).toContain("# not a heading");
+	});
+
+	it("does not let bullet `* ` markers swallow a line as italic and break adjacent **bold** pairs", () => {
+		const input = [
+			"List:",
+			"* **Michel Foucault (Poder, Conhecimento e Discurso)** — descrição",
+			"* **Gilles Deleuze (Multiplicidade, Devir)** — descrição",
+		].join("\n");
+		const output = markdownToMrkdwn(input);
+		expect(output).toContain("*Michel Foucault (Poder, Conhecimento e Discurso)*");
+		expect(output).toContain("*Gilles Deleuze (Multiplicidade, Devir)*");
+		// No raw `**` should leak through.
+		expect(output).not.toContain("**");
+	});
+
+	it("requires non-whitespace at italic boundaries (CommonMark emphasis rule)", () => {
+		// `* x *` (whitespace immediately inside) is NOT italic in
+		// standard markdown; leave it alone so bullets aren't swallowed.
+		expect(markdownToMrkdwn("* not italic *")).toContain("* not italic *");
+	});
 });

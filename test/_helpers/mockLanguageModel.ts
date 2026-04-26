@@ -64,6 +64,20 @@ export function mockEchoModel(): MockLanguageModelV3 {
 	});
 }
 
+/**
+ * Throws synchronously inside `doStream` so the AI SDK propagates the
+ * error up to the caller's `await result.text` — used to exercise the
+ * `handleIncoming` try/catch and the painter's fallback flushFinal
+ * (F-04 belt-and-suspenders for stream failures).
+ */
+export function mockErrorModel(message = "simulated stream failure"): MockLanguageModelV3 {
+	return new MockLanguageModelV3({
+		doStream: async () => {
+			throw new Error(message);
+		},
+	});
+}
+
 function extractText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";

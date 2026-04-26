@@ -7,6 +7,9 @@
  * matches how Slack itself renders mrkdwn.
  *
  * Conversion rules applied to the non-code gaps:
+ *   - `# / ## / ### / ####` headings → `*bold*` line (Slack mrkdwn has no
+ *                                       headings; otherwise the `###` prefix
+ *                                       leaks into the rendered message)
  *   - `**bold**`    → `*bold*`                      (bold marker goes first)
  *   - `*italic*`    → `_italic_`                    (applied AFTER bold, via
  *                     a temporary marker so the single-asterisk left by bold
@@ -24,9 +27,18 @@ export interface MarkdownToMrkdwnOptions {
 
 const FENCE_RE = /```[\s\S]*?```/g;
 const INLINE_CODE_RE = /`[^`\n]+`/g;
-const BOLD_RE = /\*\*([^*]+)\*\*/g;
-const ITALIC_RE = /\*([^*]+)\*/g;
-const STRIKE_RE = /~~([^~]+)~~/g;
+// Up to 4 leading `#` (covers H1–H4); H5/H6 are uncommon and would render
+// the same. Multiline so `^` matches every line, not just the start of input.
+const HEADING_RE = /^#{1,4}\s+(.+?)\s*#*\s*$/gm;
+// Bold/italic require non-whitespace immediately inside the markers so a
+// markdown bullet line like `* item` (asterisk + space) doesn't get
+// misinterpreted as italic that swallows everything up to the next `*`
+// (typically the next bullet on the next line). Standard CommonMark
+// emphasis rules. The single-char form (`*x*`) is handled by allowing
+// the captured run to be a single non-whitespace char.
+const BOLD_RE = /\*\*(\S(?:[^*]*?\S)?)\*\*/g;
+const ITALIC_RE = /\*(\S(?:[^*]*?\S)?)\*/g;
+const STRIKE_RE = /~~(\S(?:[^~]*?\S)?)~~/g;
 const LINK_RE = /\[([^\]]+)\]\(([^)]+)\)/g;
 const MENTION_RE = /(^|[^A-Za-z0-9_])@([A-Za-z0-9_.\-]+)/g;
 
@@ -63,7 +75,14 @@ export function markdownToMrkdwn(input: string, opts: MarkdownToMrkdwnOptions = 
 	const inline = extractSpans(fence.text, INLINE_CODE_RE, "I");
 
 	let text = inline.text;
-	// Bold first, parked behind a marker so the italic pass can't re-catch
+	// Headings → bold line. Done BEFORE the bold pass so the bold marker can
+	// shield the heading text from the italic pass too. Trailing `#` markers
+	// (e.g. `## Title ##`) are stripped.
+	text = text.replace(
+		HEADING_RE,
+		(_, inner: string) => `${BOLD_MARKER_START}${inner}${BOLD_MARKER_END}`,
+	);
+	// Bold next, parked behind a marker so the italic pass can't re-catch
 	// the lone asterisks bold leaves behind.
 	text = text.replace(
 		BOLD_RE,

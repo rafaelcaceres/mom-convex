@@ -50,4 +50,39 @@ export const MODEL_PRICES: Readonly<Record<string, ModelPrice>> = {
 		cacheReadPerM: 0.1,
 		cacheWritePerM: 1.25,
 	},
+	// Gemini 2.5 — context cache is implicit and pricing is roughly 25% of
+	// input on the standard tier; we approximate cacheReadPerM = 0.25× input
+	// and leave cacheWritePerM = inputPerM (no surcharge), so a thinking
+	// turn with cache hits prices conservatively-low rather than zero.
+	// See https://ai.google.dev/gemini-api/docs/pricing.
+	"gemini-2.5-pro": {
+		inputPerM: 1.25,
+		outputPerM: 10,
+		cacheReadPerM: 0.31,
+		cacheWritePerM: 1.25,
+	},
+	"gemini-2.5-flash": {
+		inputPerM: 0.3,
+		outputPerM: 2.5,
+		cacheReadPerM: 0.075,
+		cacheWritePerM: 0.3,
+	},
+	// DeepSeek pricing (https://api-docs.deepseek.com/quick_start/pricing).
+	// Public list pricing in USD; cache hit ≈ 25% of cache miss. No
+	// surcharge to write to cache, so cacheWritePerM = inputPerM (matches
+	// the gemini convention above — keeps cache-heavy workloads from
+	// pricing to zero, but doesn't overcount). Output for `deepseek-reasoner`
+	// includes reasoning tokens at the same rate.
+	"deepseek-chat": {
+		inputPerM: 0.27,
+		outputPerM: 1.1,
+		cacheReadPerM: 0.07,
+		cacheWritePerM: 0.27,
+	},
+	"deepseek-reasoner": {
+		inputPerM: 0.55,
+		outputPerM: 2.19,
+		cacheReadPerM: 0.14,
+		cacheWritePerM: 0.55,
+	},
 };

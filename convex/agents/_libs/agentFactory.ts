@@ -1,9 +1,9 @@
 import { anthropic } from "@ai-sdk/anthropic";
+import { deepseek } from "@ai-sdk/deepseek";
+import { google } from "@ai-sdk/google";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { Agent } from "@convex-dev/agent";
 import { components } from "../../_generated/api";
-
-type AnthropicModel = ReturnType<typeof anthropic>;
 
 /**
  * Lazy, cached `@convex-dev/agent` Agent instances keyed by
@@ -37,10 +37,14 @@ function resolveLanguageModel(provider: string, modelId: string): LanguageModelV
 	if (testModelOverride) return testModelOverride;
 	switch (provider) {
 		case "anthropic":
-			return anthropic(modelId) satisfies AnthropicModel;
+			return anthropic(modelId);
+		case "google":
+			return google(modelId);
+		case "deepseek":
+			return deepseek(modelId);
 		default:
 			throw new Error(
-				`agentFactory: unsupported model provider '${provider}'. Only 'anthropic' is supported in M2-T01.`,
+				`agentFactory: unsupported model provider '${provider}'. Supported: 'anthropic', 'google', 'deepseek'.`,
 			);
 	}
 }

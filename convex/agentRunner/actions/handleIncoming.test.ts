@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { newTest } from "../../../test/_helpers/convex";
-import { mockTextModel } from "../../../test/_helpers/mockLanguageModel";
+import { mockErrorModel, mockTextModel } from "../../../test/_helpers/mockLanguageModel";
+import { http, HttpResponse, server } from "../../../test/_helpers/msw";
 import { api, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
+import { encrypt, generateMasterKeyBase64 } from "../../_shared/_libs/crypto";
 import { _clearAgentCache, _setLanguageModelOverride } from "../../agents/_libs/agentFactory";
 import { listThreadMessages } from "../../agents/adapters/threadBridge";
 
 const ORG = "org_A";
+const ORIGINAL_KEY = process.env.CREDS_MASTER_KEY;
 
 const baseAgentArgs = {
 	orgId: ORG,
@@ -57,48 +60,77 @@ async function readMessages(t: ReturnType<typeof newTest>, threadId: Id<"threads
 	});
 }
 
-async function listScheduled(t: ReturnType<typeof newTest>) {
-	return t.run(async (ctx) => {
-		const jobs = await ctx.db.system.query("_scheduled_functions").collect();
-		return jobs;
-	});
+async function seedSlackInstall(t: ReturnType<typeof newTest>): Promise<Id<"slackInstalls">> {
+	const botTokenEnc = await encrypt("xoxb-real");
+	return t.run(async (ctx) =>
+		ctx.db.insert("slackInstalls", {
+			orgId: ORG,
+			teamId: "T1",
+			teamName: "T",
+			botTokenEnc,
+			scope: "app_mentions:read",
+			botUserId: "UBOT",
+		}),
+	);
 }
 
-async function listScheduledPostMessage(t: ReturnType<typeof newTest>) {
-	const jobs = await listScheduled(t);
-	return jobs.filter((j) => j.name.includes("postMessage"));
+type SlackPostBody = {
+	channel: string;
+	text: string;
+	thread_ts?: string;
+};
+type SlackUpdateBody = { channel: string; ts: string; text: string };
+
+function captureSlackCalls() {
+	const posts: SlackPostBody[] = [];
+	const updates: SlackUpdateBody[] = [];
+	let postCounter = 1;
+	server.use(
+		http.post("https://slack.com/api/chat.postMessage", async ({ request }) => {
+			const body = (await request.json()) as SlackPostBody;
+			posts.push(body);
+			const ts = `${100 + postCounter}.000${postCounter}`;
+			postCounter += 1;
+			return HttpResponse.json({ ok: true, channel: body.channel, ts });
+		}),
+		http.post("https://slack.com/api/chat.update", async ({ request }) => {
+			const body = (await request.json()) as SlackUpdateBody;
+			updates.push(body);
+			return HttpResponse.json({ ok: true, channel: body.channel, ts: body.ts });
+		}),
+	);
+	return { posts, updates };
 }
 
 describe("M2-T01 agentRunner.handleIncoming real streamText", () => {
 	beforeEach(() => {
+		process.env.CREDS_MASTER_KEY = generateMasterKeyBase64();
 		_clearAgentCache();
 	});
 	afterEach(() => {
 		_setLanguageModelOverride(null);
 		_clearAgentCache();
+		if (ORIGINAL_KEY === undefined) {
+			// biome-ignore lint/performance/noDelete: env isolation between tests
+			delete process.env.CREDS_MASTER_KEY;
+		} else {
+			process.env.CREDS_MASTER_KEY = ORIGINAL_KEY;
+		}
 	});
 
-	it("slack binding: persists user + streamed assistant reply and schedules slack postMessage with the real LLM text", async () => {
+	it("slack binding (no tools): paints live via postMessage + final chat.update, persists parentTs", async () => {
 		_setLanguageModelOverride(mockTextModel("hi there"));
 
 		const t = newTest();
 		const agentId = await seedAgent(t);
-		const installId = await t.run(async (ctx) =>
-			ctx.db.insert("slackInstalls", {
-				orgId: ORG,
-				teamId: "T1",
-				teamName: "T",
-				botTokenEnc: { ciphertextB64: "c", nonceB64: "n", kid: "k1" },
-				scope: "app_mentions:read",
-				botUserId: "UBOT",
-			}),
-		);
+		const installId = await seedSlackInstall(t);
 		const threadId = await seedThread(t, agentId, {
 			type: "slack",
 			installId,
 			channelId: "C1",
 			threadTs: "1.1",
 		});
+		const { posts, updates } = captureSlackCalls();
 
 		await t.action(internal.agentRunner.actions.handleIncoming.default, {
 			orgId: ORG,
@@ -111,27 +143,37 @@ describe("M2-T01 agentRunner.handleIncoming real streamText", () => {
 		expect(msgs[0]).toMatchObject({ role: "user", text: "hello" });
 		expect(msgs[1]).toMatchObject({ role: "assistant", text: "hi there" });
 
-		const scheduled = await listScheduledPostMessage(t);
-		expect(scheduled).toHaveLength(1);
-		const job = scheduled[0];
-		if (!job) throw new Error("unreachable");
-		expect(job.args[0]).toMatchObject({
-			installId,
-			channelId: "C1",
-			threadTs: "1.1",
+		// Painter: `start()` posts the anchor eagerly (italic
+		// "thinking..." placeholder), text-deltas may emit intermediate
+		// updates, and `flushFinal` lands the polished final text.
+		expect(posts).toHaveLength(1);
+		expect(posts[0]).toMatchObject({ channel: "C1", thread_ts: "1.1" });
+		expect(posts[0]?.text).toBe("_thinking..._");
+		expect(posts[0]?.text).not.toContain("hi there");
+		expect(updates.length).toBeGreaterThanOrEqual(1);
+		const lastUpdate = updates.at(-1);
+		expect(lastUpdate).toMatchObject({
+			channel: "C1",
+			ts: "101.0001",
 			text: "hi there",
 		});
 
-		await t.finishAllScheduledFunctions(() => undefined);
+		const updatedThread = await t.run(async (ctx) => ctx.db.get(threadId));
+		expect(updatedThread?.binding.type).toBe("slack");
+		if (updatedThread?.binding.type === "slack") {
+			// First mocked post ts: `${100+1}.000${1}` → "101.0001"
+			expect(updatedThread.binding.parentTs).toBe("101.0001");
+		}
 	});
 
-	it("web binding: persists both messages, schedules no slack postMessage", async () => {
+	it("web binding: persists both messages, never touches slack API", async () => {
 		_setLanguageModelOverride(mockTextModel("olá!"));
 
 		const t = newTest();
 		const agentId = await seedAgent(t);
 		const userId = await t.run(async (ctx) => ctx.db.insert("users", {}));
 		const threadId = await seedThread(t, agentId, { type: "web", userId });
+		const { posts, updates } = captureSlackCalls();
 
 		await t.action(internal.agentRunner.actions.handleIncoming.default, {
 			orgId: ORG,
@@ -142,17 +184,17 @@ describe("M2-T01 agentRunner.handleIncoming real streamText", () => {
 		const msgs = await readMessages(t, threadId);
 		expect(msgs.map((m) => m.role)).toEqual(expect.arrayContaining(["user", "assistant"]));
 		expect(msgs.find((m) => m.role === "assistant")?.text).toBe("olá!");
-
-		const scheduled = await listScheduledPostMessage(t);
-		expect(scheduled).toHaveLength(0);
+		expect(posts).toHaveLength(0);
+		expect(updates).toHaveLength(0);
 	});
 
-	it("event binding: persists both messages, no slack dispatch", async () => {
+	it("event binding: persists both messages, never touches slack API", async () => {
 		_setLanguageModelOverride(mockTextModel("tock"));
 
 		const t = newTest();
 		const agentId = await seedAgent(t);
 		const threadId = await seedThread(t, agentId, { type: "event", eventId: "ev_1" });
+		const { posts, updates } = captureSlackCalls();
 
 		await t.action(internal.agentRunner.actions.handleIncoming.default, {
 			orgId: ORG,
@@ -163,8 +205,8 @@ describe("M2-T01 agentRunner.handleIncoming real streamText", () => {
 		const msgs = await readMessages(t, threadId);
 		expect(msgs).toHaveLength(2);
 		expect(msgs[1]?.text).toBe("tock");
-		const scheduled = await listScheduledPostMessage(t);
-		expect(scheduled).toHaveLength(0);
+		expect(posts).toHaveLength(0);
+		expect(updates).toHaveLength(0);
 	});
 
 	it("records a costLedger row per LLM step with priced token usage (M2-T15)", async () => {
@@ -207,7 +249,38 @@ describe("M2-T01 agentRunner.handleIncoming real streamText", () => {
 		expect(row?.costUsd).toBeLessThan(0.0001);
 	});
 
-	it("empty text: skips — no writes, no scheduling, no LLM call", async () => {
+	it("slack: stream throws → painter still flushes a fallback message and re-throws", async () => {
+		_setLanguageModelOverride(mockErrorModel("provider blew up"));
+
+		const t = newTest();
+		const agentId = await seedAgent(t);
+		const installId = await seedSlackInstall(t);
+		const threadId = await seedThread(t, agentId, {
+			type: "slack",
+			installId,
+			channelId: "C1",
+			threadTs: "1.1",
+		});
+		const { posts, updates } = captureSlackCalls();
+
+		await expect(
+			t.action(internal.agentRunner.actions.handleIncoming.default, {
+				orgId: ORG,
+				threadId,
+				userMessage: { text: "boom", senderId: "U1" },
+			}),
+		).rejects.toThrow();
+
+		// painter.start() posts the placeholder anchor; flushFinal then
+		// edits it to the fallback so the user never sees a half-rendered
+		// live state stuck in the channel.
+		expect(posts).toHaveLength(1);
+		expect(posts[0]?.text).toBe("_thinking..._");
+		expect(updates).toHaveLength(1);
+		expect(updates[0]?.text).toBe("_(erro ao gerar resposta — tente novamente)_");
+	});
+
+	it("empty text: skips — no writes, no slack calls, no LLM call", async () => {
 		const mock = mockTextModel("should not be called");
 		_setLanguageModelOverride(mock);
 
@@ -218,6 +291,7 @@ describe("M2-T01 agentRunner.handleIncoming real streamText", () => {
 			installId: "si_1",
 			channelId: "C1",
 		});
+		const { posts, updates } = captureSlackCalls();
 
 		await t.action(internal.agentRunner.actions.handleIncoming.default, {
 			orgId: ORG,
@@ -227,8 +301,8 @@ describe("M2-T01 agentRunner.handleIncoming real streamText", () => {
 
 		const msgs = await readMessages(t, threadId);
 		expect(msgs).toHaveLength(0);
-		const scheduled = await listScheduledPostMessage(t);
-		expect(scheduled).toHaveLength(0);
+		expect(posts).toHaveLength(0);
+		expect(updates).toHaveLength(0);
 		expect(mock.doStreamCalls).toHaveLength(0);
 	});
 });

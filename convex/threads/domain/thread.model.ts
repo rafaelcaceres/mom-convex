@@ -17,6 +17,13 @@ export const SlackBindingModel = v.object({
 	installId: v.string(),
 	channelId: v.string(),
 	threadTs: v.optional(v.string()),
+	// Anchor for tool-call thread replies (F-03). The bot's main reply for the
+	// current Slack turn lands here; subsequent tool-call replies (and the
+	// final-text edit) hang off of it. Survives crashes: persisted via
+	// `internal.threads.mutations.setThreadParentTs` so a retried turn doesn't
+	// duplicate the anchor message. Excluded from `bindingKey` because thread
+	// identity is the user's slack thread (`threadTs`), not the bot's anchor.
+	parentTs: v.optional(v.string()),
 });
 
 export const WebBindingModel = v.object({
@@ -72,5 +79,12 @@ export class ThreadAgg implements IAggregate<Thread> {
 
 	setAgentThreadId(next: string): void {
 		this.thread.agentThreadId = next;
+	}
+
+	setParentTs(ts: string): void {
+		if (this.thread.binding.type !== "slack") {
+			throw new Error("setParentTs requires a slack binding");
+		}
+		this.thread.binding = { ...this.thread.binding, parentTs: ts };
 	}
 }

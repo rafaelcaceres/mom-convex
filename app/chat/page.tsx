@@ -1,6 +1,7 @@
 import { SignOutButton } from "../SignOutButton";
 import { ChatShell } from "./ChatShell";
 import { ConfigureAgentLink } from "./ConfigureAgentLink";
+import { ModelPicker } from "./ModelPicker";
 
 export default function ChatPage() {
 	return (
@@ -21,7 +22,10 @@ export default function ChatPage() {
 					borderBottom: "1px solid #eee",
 				}}
 			>
-				<h1 style={{ margin: 0, fontSize: "1.125rem" }}>Chat</h1>
+				<div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+					<h1 style={{ margin: 0, fontSize: "1.125rem" }}>Chat</h1>
+					<ModelPicker />
+				</div>
 				<div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
 					<ConfigureAgentLink />
 					<SignOutButton />
