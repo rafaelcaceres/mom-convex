@@ -30,12 +30,17 @@ type Segment =
 	| { kind: "reasoning"; snippet: string };
 
 /**
- * Slack's documented `text` cap is 40 000, but `chat.update`/`chat.postMessage`
- * reject single-text-field payloads above ~4 000 chars with `msg_too_long`.
- * Keep the live render under this so updates never fail; longer final text
- * is split into thread-reply continuations by `flushFinal`.
+ * Slack's documented `text` cap is 40 000, but `chat.update` empirically
+ * rejects mrkdwn payloads with `msg_too_long` well below that — observed
+ * at ~3 000 chars when text contains formatted spans (asterisks, code
+ * fences, accented chars). The reference `mom` (`docs/pi-mono/packages/
+ * mom`) sidesteps this by not doing live edits at all (it accumulates and
+ * posts once via `chat.postMessage`, which has a higher practical limit).
+ * We do live edits, so we cap conservatively here. The polished final
+ * render lands via `flushFinalBlocks` (Block Kit, different validation
+ * path) where this limit doesn't apply.
  */
-const SLACK_TEXT_LIMIT = 3900;
+const SLACK_TEXT_LIMIT = 2800;
 const REASONING_SNIPPET_LIMIT = 120;
 
 /**
@@ -187,8 +192,21 @@ export function createSlackPainter(args: CreateSlackPainterArgs): SlackPainter {
 				// Don't abort the turn on a Slack hiccup — log and let the next
 				// scheduled write try again. The final flushFinal also runs
 				// through the chain, so a transient failure usually self-heals
-				// before the user sees the polished final text.
-				console.warn("[slackPainter] write failed", err);
+				// before the user sees the polished final text. `msg_too_long`
+				// during streaming is expected on long replies and harmless: the
+				// final Block Kit flush (`flushFinalBlocks`) renders the full
+				// content via a different code path — log at debug-volume.
+				const isTooLong =
+					typeof err === "object" &&
+					err !== null &&
+					"data" in err &&
+					typeof (err as { data?: { error?: string } }).data?.error === "string" &&
+					(err as { data: { error: string } }).data.error === "msg_too_long";
+				if (isTooLong) {
+					console.debug("[slackPainter] live update skipped: msg_too_long");
+				} else {
+					console.warn("[slackPainter] write failed", err);
+				}
 			}
 		})();
 	}
