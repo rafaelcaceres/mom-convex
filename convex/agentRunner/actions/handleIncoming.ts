@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { getAgent } from "../../agents/_libs/agentFactory";
+import { loadLaminarMcpTools } from "../../agents/_libs/mcpTools";
 import { buildProviderOptions } from "../../agents/_libs/providerOptions";
 import { buildSystemPrompt } from "../../agents/_libs/systemPrompt";
 import { saveUserMessage, streamAssistantReply } from "../../agents/adapters/threadBridge";
@@ -87,7 +88,7 @@ const handleIncoming = internalAction({
 			}),
 		]);
 
-		const tools = buildToolSet({
+		const skillTools = buildToolSet({
 			entries: skillEntries,
 			runAction: ctx.runAction.bind(ctx),
 			scope: {
@@ -98,6 +99,16 @@ const handleIncoming = internalAction({
 				userId: args.userMessage.senderId ?? null,
 			},
 		});
+
+		// Remote MCP (M2 spike). Allowlist gate: agents must have "laminar"
+		// in `toolsAllowlist`. MCP tools are merged into the same ToolSet
+		// passed to `streamAssistantReply`; they bypass the skills dispatcher
+		// (no `skills.invoke` audit, no confirmation gate, no catalog row).
+		// `cost.record` `tool-call` rows still fire from `onStepFinish` since
+		// the AI SDK doesn't distinguish skill vs MCP tools at that hook.
+		const laminarEnabled = agentDoc.toolsAllowlist.includes("laminar");
+		const mcp = laminarEnabled ? await loadLaminarMcpTools() : null;
+		const tools = mcp ? { ...skillTools, ...mcp.tools } : skillTools;
 
 		const systemPrompt = buildSystemPrompt({
 			agent: { name: agentDoc.name, systemPrompt: agentDoc.systemPrompt },
@@ -324,6 +335,11 @@ const handleIncoming = internalAction({
 		} catch (err) {
 			streamErr = err;
 			console.error("[handleIncoming] streamAssistantReply failed", err);
+		} finally {
+			// Best-effort cleanup of the MCP HTTP session regardless of how
+			// the stream ended. Errors during close are swallowed inside
+			// `loadLaminarMcpTools` so they never mask `streamErr`.
+			if (mcp) await mcp.close();
 		}
 
 		if (painter) {

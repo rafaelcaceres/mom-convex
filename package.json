@@ -23,6 +23,7 @@
 		"@ai-sdk/anthropic": "^3.0.71",
 		"@ai-sdk/deepseek": "2.0.29",
 		"@ai-sdk/google": "^3.0.64",
+		"@ai-sdk/mcp": "^1.0.37",
 		"@auth/core": "^0.37.4",
 		"@convex-dev/agent": "^0.6.1",
 		"@convex-dev/auth": "^0.0.91",

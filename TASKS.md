@@ -12,14 +12,14 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 ## Status
 
 - **Current milestone:** M2 — Agente real + Vercel Sandbox
-- **Last updated:** 2026-04-24
-- **Overall:** 38 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Last updated:** 2026-04-26
+- **Overall:** 39 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
-| M2 — Agente real + Vercel Sandbox | 16 | 19 |
+| M2 — Agente real + Vercel Sandbox | 17 | 19 |
 | M3 — RAG + integrações reais | 0 | 12 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
@@ -73,7 +73,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T15](tasks/m2-agent-sandbox/M2-T15-on-step-finish-cost.md) — onStepFinish → costLedger
 - [x] [M2-T16](tasks/m2-agent-sandbox/M2-T16-sandbox-gc-cron.md) — Sandbox GC cron
 - [x] [M2-T17](tasks/m2-agent-sandbox/M2-T17-ui-agent-edit.md) — UI /agents/[id]/edit
-- [ ] [M2-T18](tasks/m2-agent-sandbox/M2-T18-ui-thread-detail.md) — UI /threads/[id] — tool calls + cost
+- [x] [M2-T18](tasks/m2-agent-sandbox/M2-T18-ui-thread-detail.md) — UI tool calls + cost (entregue inline no `/chat` via F-02; spec literal de `/threads/[id]` superseded)
 - [ ] [M2-T19](tasks/m2-agent-sandbox/M2-T19-smoke-m2.md) — **Smoke M2 FizzBuzz**
 - [x] [M2-T20](tasks/m2-agent-sandbox/M2-T20-slack-user-cache.md) — Slack user-cache + mention resolution
 - [x] [M2-T21](tasks/m2-agent-sandbox/M2-T21-slack-tool-duration.md) — Slack tool reply — duração da execução
@@ -116,7 +116,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 ## Follow-ups / backlog (fora da contagem de milestone)
 
 - [ ] [F-01](tasks/followups/F-01-catalog-sync-utility.md) — Catalog sync utility (`resyncSkillCatalog`) — surfaced por M2-T08 quando o zod schema de `memory.search` mudou e o `skillCatalog` ficou stale silenciosamente.
-- [ ] [F-02](tasks/followups/F-02-chat-inline-tool-calls.md) — Chat com tool calls colapsáveis inline — surfaced em review pós-M2-T18: `/threads/[id]` em página separada quebra o fluxo, certo é inline no `/chat` colapsado por default (reusa `ToolCallCard`/`UsageBadge`/`listThreadEvents`).
+- [x] [F-02](tasks/followups/F-02-chat-inline-tool-calls.md) — Chat com tool calls colapsáveis inline — entregue: `MessageList` itera `message.parts` e renderiza `ToolCallCard` inline; `UsagePanel` é header do `/chat`; `listUIMessages` (via `useUIMessages`) substituiu o `listThreadEvents` planejado.
 - [ ] [F-03](tasks/followups/F-03-slack-tool-call-thread-replies.md) — Slack: tool calls como thread replies estilo pi-mono — paridade Slack do F-02; main message limpa + replies sob ela carregando args/result, com `chat.update` pra editar em retries. Domain ganha `Thread.binding.parentTs?`.
 
 ## Tasks bloqueadas / riscos ativos
