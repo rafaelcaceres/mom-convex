@@ -22,6 +22,7 @@ const updateAgent = mutation({
 		agentId: v.id("agents"),
 		systemPrompt: v.optional(v.string()),
 		modelId: v.optional(v.string()),
+		toolsAllowlist: v.optional(v.array(v.string())),
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
@@ -42,6 +43,10 @@ const updateAgent = mutation({
 			const entry = SUPPORTED_MODELS.find((m) => m.modelId === args.modelId);
 			if (!entry) throw new Error("unreachable");
 			agg.updateModel({ modelId: entry.modelId, modelProvider: entry.provider });
+		}
+
+		if (args.toolsAllowlist !== undefined) {
+			agg.setToolsAllowlist(args.toolsAllowlist);
 		}
 
 		await AgentRepository.save(ctx, agg);

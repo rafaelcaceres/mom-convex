@@ -118,6 +118,8 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [ ] [F-01](tasks/followups/F-01-catalog-sync-utility.md) — Catalog sync utility (`resyncSkillCatalog`) — surfaced por M2-T08 quando o zod schema de `memory.search` mudou e o `skillCatalog` ficou stale silenciosamente.
 - [x] [F-02](tasks/followups/F-02-chat-inline-tool-calls.md) — Chat com tool calls colapsáveis inline — entregue: `MessageList` itera `message.parts` e renderiza `ToolCallCard` inline; `UsagePanel` é header do `/chat`; `listUIMessages` (via `useUIMessages`) substituiu o `listThreadEvents` planejado.
 - [ ] [F-03](tasks/followups/F-03-slack-tool-call-thread-replies.md) — Slack: tool calls como thread replies estilo pi-mono — paridade Slack do F-02; main message limpa + replies sob ela carregando args/result, com `chat.update` pra editar em retries. Domain ganha `Thread.binding.parentTs?`.
+- [x] [F-05](tasks/followups/F-05-remote-mcp-laminar.md) — Remote MCP integration (Laminar) — wire `@ai-sdk/mcp` HTTP client em `handleIncoming`, allowlist-gated por `toolsAllowlist.includes("laminar")`, prefix `laminar_*`, token via `LAMINAR_MCP_TOKEN`; fora do skills catalog (sem audit `skills.invoke` / sem confirmation gate), mas `cost.record` `tool-call` continua via `onStepFinish`.
+- [x] [F-06](tasks/followups/F-06-ui-tools-allowlist-editor.md) — UI `/agents/[id]/edit` "External tools" — chip editor free-form do `agents.toolsAllowlist` (auto-save via `updateAgent`); fecha o gap deixado por M2-T17 quando F-05 introduziu o allowlist como gate de runtime.
 
 ## Tasks bloqueadas / riscos ativos
 

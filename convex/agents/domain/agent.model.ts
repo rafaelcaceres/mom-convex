@@ -60,4 +60,17 @@ export class AgentAgg implements IAggregate<Agent> {
 		this.agent.modelId = next.modelId;
 		this.agent.modelProvider = next.modelProvider;
 	}
+
+	setToolsAllowlist(next: string[]): void {
+		const seen = new Set<string>();
+		const cleaned: string[] = [];
+		for (const raw of next) {
+			const trimmed = raw.trim();
+			if (!trimmed) continue;
+			if (seen.has(trimmed)) continue;
+			seen.add(trimmed);
+			cleaned.push(trimmed);
+		}
+		this.agent.toolsAllowlist = cleaned;
+	}
 }

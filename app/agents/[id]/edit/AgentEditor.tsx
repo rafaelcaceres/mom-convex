@@ -7,6 +7,7 @@ import { MemoryEditor } from "./MemoryEditor";
 import { ModelSelector } from "./ModelSelector";
 import { PromptEditor } from "./PromptEditor";
 import { SkillsToggle } from "./SkillsToggle";
+import { ToolsAllowlistEditor } from "./ToolsAllowlistEditor";
 
 type Props = { agentId: Id<"agents"> };
 
@@ -73,6 +74,14 @@ export function AgentEditor({ agentId }: Props) {
 
 			<Section title="Skills">
 				<SkillsToggle agentId={agent._id} disabled={!isAdmin} />
+			</Section>
+
+			<Section title="External tools">
+				<ToolsAllowlistEditor
+					agentId={agent._id}
+					initial={agent.toolsAllowlist}
+					disabled={!isAdmin}
+				/>
 			</Section>
 
 			<Section title="Memory">
