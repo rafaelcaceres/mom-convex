@@ -77,7 +77,7 @@ const handleIncoming = internalAction({
 			toolsAllowlist: agentDoc.toolsAllowlist,
 		});
 
-		const [skillEntries, memories] = await Promise.all([
+		const [skillEntries, memories, sender] = await Promise.all([
 			ctx.runQuery(internal.skills.queries.listResolvedForAgentInternal.default, {
 				agentId: agentDoc._id,
 			}),
@@ -85,6 +85,13 @@ const handleIncoming = internalAction({
 				orgId: agentDoc.orgId,
 				agentId: agentDoc._id,
 				threadId: args.threadId,
+			}),
+			// Identity hydration: resolve the polymorphic senderId (Slack user id
+			// or web Id<"users">) into a human profile so the prompt can tell the
+			// model who it's talking to. Null on anonymous/unresolved senders.
+			ctx.runQuery(internal.agents.queries.resolveSenderInternal.default, {
+				binding: thread.binding,
+				senderId: args.userMessage.senderId,
 			}),
 		]);
 
@@ -115,6 +122,9 @@ const handleIncoming = internalAction({
 			memories,
 			users: [],
 			channels: [],
+			sender: sender
+				? { name: sender.name, handle: sender.handle, isBot: sender.isBot }
+				: undefined,
 			skills: skillEntries.map((e) => ({
 				skillKey: e.skillKey,
 				name: e.name,

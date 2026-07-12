@@ -32,6 +32,7 @@ import type * as agents_queries_getByIdInternal from "../agents/queries/getByIdI
 import type * as agents_queries_getDefault from "../agents/queries/getDefault.js";
 import type * as agents_queries_getDefaultInternal from "../agents/queries/getDefaultInternal.js";
 import type * as agents_queries_listByOrg from "../agents/queries/listByOrg.js";
+import type * as agents_queries_resolveSenderInternal from "../agents/queries/resolveSenderInternal.js";
 import type * as auth from "../auth.js";
 import type * as authz from "../authz.js";
 import type * as cost__libs_modelPrices from "../cost/_libs/modelPrices.js";
@@ -159,6 +160,7 @@ declare const fullApi: ApiFromModules<{
   "agents/queries/getDefault": typeof agents_queries_getDefault;
   "agents/queries/getDefaultInternal": typeof agents_queries_getDefaultInternal;
   "agents/queries/listByOrg": typeof agents_queries_listByOrg;
+  "agents/queries/resolveSenderInternal": typeof agents_queries_resolveSenderInternal;
   auth: typeof auth;
   authz: typeof authz;
   "cost/_libs/modelPrices": typeof cost__libs_modelPrices;

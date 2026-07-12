@@ -23,6 +23,13 @@ export type Platform = "slack" | "web" | "event";
 export type UserInfo = { id: string; name: string; role?: string };
 export type ChannelInfo = { id: string; name: string; purpose?: string };
 export type SkillInfo = { skillKey: string; name: string; description: string };
+/**
+ * The human (or bot) who sent the message being answered this turn. Resolved
+ * upstream from the polymorphic `senderId` (Slack directory or web users
+ * table). `handle` is the Slack `@username` or the web email; `undefined` for
+ * anonymous turns, in which case the whole identity block is omitted.
+ */
+export type SenderInfo = { name: string; handle?: string; isBot?: boolean };
 
 export type BuildSystemPromptInput = {
 	agent: { name: string; systemPrompt: string };
@@ -31,6 +38,7 @@ export type BuildSystemPromptInput = {
 	channels: ChannelInfo[];
 	skills: SkillInfo[];
 	platform?: Platform;
+	sender?: SenderInfo;
 };
 
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
@@ -43,6 +51,12 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 	// stops attending to them and falls back to standard markdown
 	// (`**bold**`, `### heading`, tables) trained-in defaults.
 	if (input.platform === "slack") sections.push(SLACK_FORMATTING_BLOCK);
+
+	// Who am I talking to right now — placed high so the model attends to it
+	// before the (potentially large) Users/Memory sections push it out of
+	// focus. Omitted entirely for anonymous turns.
+	const sender = renderSender(input.sender);
+	if (sender) sections.push(sender);
 
 	const users = renderUsers(input.users);
 	if (users) sections.push(users);
@@ -63,6 +77,16 @@ const SLACK_FORMATTING_BLOCK = [
 	"- Emojis: Slack shortcodes like `:white_check_mark:`, `:warning:`, `:rocket:` are welcome (and unicode emojis work too).",
 	"- Avoid: HTML tags and horizontal rules (`---`) — Slack ignores them.",
 ].join("\n");
+
+function renderSender(sender: SenderInfo | undefined): string | null {
+	if (!sender) return null;
+	const handle = sender.handle ? ` (@${sender.handle})` : "";
+	const bot = sender.isBot ? " — this is a bot account, not a human" : "";
+	return [
+		"## Current User",
+		`You are talking to **${sender.name}**${handle}${bot}. Address them by name when it feels natural, but don't overuse it.`,
+	].join("\n");
+}
 
 function renderUsers(users: UserInfo[]): string | null {
 	if (users.length === 0) return null;

@@ -83,6 +83,47 @@ describe("M2-T09 buildSystemPrompt", () => {
 		`);
 	});
 
+	it("renders the Current User block with name + handle near the top", () => {
+		const prompt = buildSystemPrompt({
+			agent: { name: "n", systemPrompt: "sp" },
+			users: [],
+			channels: [],
+			skills: [],
+			memories: [],
+			sender: { name: "rafa", handle: "xauz" },
+		});
+		expect(prompt).toContain("## Current User");
+		expect(prompt).toContain("You are talking to **rafa** (@xauz).");
+		// Identity must precede Tools/Memory so it isn't pushed out of focus.
+		expect(prompt.indexOf("## Current User")).toBeLessThan(prompt.indexOf("## Tools"));
+	});
+
+	it("flags bot senders and omits handle when absent", () => {
+		const prompt = buildSystemPrompt({
+			agent: { name: "n", systemPrompt: "sp" },
+			users: [],
+			channels: [],
+			skills: [],
+			memories: [],
+			sender: { name: "paperbot", isBot: true },
+		});
+		expect(prompt).toContain(
+			"You are talking to **paperbot** — this is a bot account, not a human.",
+		);
+		expect(prompt).not.toContain("(@");
+	});
+
+	it("omits the Current User block entirely for anonymous turns", () => {
+		const prompt = buildSystemPrompt({
+			agent: { name: "n", systemPrompt: "sp" },
+			users: [],
+			channels: [],
+			skills: [],
+			memories: [],
+		});
+		expect(prompt).not.toContain("## Current User");
+	});
+
 	it("places agent.systemPrompt at the very top", () => {
 		const prompt = buildSystemPrompt({
 			agent: { name: "n", systemPrompt: "TOPLINE INSTRUCTIONS" },
