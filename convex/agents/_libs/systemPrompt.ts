@@ -112,17 +112,21 @@ function renderTools(skills: SkillInfo[]): string {
 	return `## Tools\n${lines.join("\n")}`;
 }
 
-const SCOPE_ORDER: readonly MemoryScope[] = ["org", "agent", "thread"] as const;
+// Broadest first, most specific last — so that when the cap truncates, what
+// survives is the shared context, and the model reads the narrowest facts
+// closest to the task.
+const SCOPE_ORDER: readonly MemoryScope[] = ["org", "agent", "channel", "thread"] as const;
 const SCOPE_LABEL: Record<MemoryScope, string> = {
 	org: "### Organization",
 	agent: "### Agent",
+	channel: "### Channel",
 	thread: "### Thread",
 };
 
 function renderMemory(memories: Memory[]): string {
 	if (memories.length === 0) return "## Memory\n(none)";
 
-	const grouped: Record<MemoryScope, Memory[]> = { org: [], agent: [], thread: [] };
+	const grouped: Record<MemoryScope, Memory[]> = { org: [], agent: [], channel: [], thread: [] };
 	for (const m of memories) grouped[m.scope].push(m);
 	for (const scope of SCOPE_ORDER) {
 		grouped[scope].sort((a, b) => b._creationTime - a._creationTime);

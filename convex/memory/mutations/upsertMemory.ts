@@ -36,6 +36,7 @@ const upsertMemory = mutation({
 		scope: MemoryScopeModel,
 		agentId: v.optional(v.id("agents")),
 		threadId: v.optional(v.id("threads")),
+		channelKey: v.optional(v.string()),
 		content: v.string(),
 		alwaysOn: v.optional(v.boolean()),
 	},
@@ -47,7 +48,12 @@ const upsertMemory = mutation({
 			throw new Error(`content exceeds ${MAX_MEMORY_CONTENT_CHARS} chars`);
 		}
 
-		const minRole = args.scope === "thread" ? "member" : "admin";
+		// `org` / `agent` scopes reshape the agent for the whole tenant → admin.
+		// `channel` and `thread` are bounded to a room the member is already in,
+		// and the agent itself writes them autonomously via `memory.save`, so
+		// gating a human behind admin for the same row would be incoherent.
+		const scoped = args.scope === "thread" || args.scope === "channel";
+		const minRole = scoped ? "member" : "admin";
 		await requireOrgRole(ctx, args.orgId, minRole);
 
 		// requireOrgRole returns userId as an opaque string; re-derive it as a
@@ -56,15 +62,22 @@ const upsertMemory = mutation({
 		if (!userId) throw new Error("Authentication required");
 
 		if (args.scope === "org") {
-			if (args.agentId || args.threadId) {
-				throw new Error("org-scoped memory must not set agentId or threadId");
+			if (args.agentId || args.threadId || args.channelKey) {
+				throw new Error("org-scoped memory must not set agentId, threadId or channelKey");
 			}
 		} else if (args.scope === "agent") {
 			if (!args.agentId) throw new Error("agent-scoped memory requires agentId");
-			if (args.threadId) throw new Error("agent-scoped memory must not set threadId");
+			if (args.threadId || args.channelKey) {
+				throw new Error("agent-scoped memory must not set threadId or channelKey");
+			}
 			const agent = await AgentRepository.get(ctx, args.agentId);
 			if (!agent || agent.getModel().orgId !== args.orgId) {
 				throw new Error("Agent not found in org");
+			}
+		} else if (args.scope === "channel") {
+			if (!args.channelKey) throw new Error("channel-scoped memory requires channelKey");
+			if (args.agentId || args.threadId) {
+				throw new Error("channel-scoped memory must not set agentId or threadId");
 			}
 		} else {
 			if (!args.agentId) throw new Error("thread-scoped memory requires agentId");
@@ -99,6 +112,7 @@ const upsertMemory = mutation({
 			scope: args.scope,
 			agentId: args.agentId,
 			threadId: args.threadId,
+			channelKey: args.channelKey,
 			content,
 			alwaysOn,
 			updatedBy: userId,

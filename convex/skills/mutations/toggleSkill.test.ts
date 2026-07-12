@@ -103,7 +103,7 @@ describe("M2-T03 toggleSkill mutation", () => {
 		expect(afterDisable.map((r) => r.skillKey)).not.toContain("sandbox.bash");
 	});
 
-	it("agent creation seeds baseline skills (http.fetch, memory.search) via trigger", async () => {
+	it("agent creation seeds baseline skills (http.fetch, memory.search, memory.save) via trigger", async () => {
 		const t = newTest();
 		// Seed catalog BEFORE org/agent creation so trigger sees the entries.
 		await t.run(async (ctx) => {
@@ -120,6 +120,10 @@ describe("M2-T03 toggleSkill mutation", () => {
 
 		const listed = await caller.query(api.skills.queries.listForAgent.default, { agentId });
 		const baseline = listed.map((r) => r.skillKey).sort();
-		expect(baseline).toEqual(["http.fetch", "memory.search"]);
+		// `memory.save` is the only write in the baseline — a fresh agent can
+		// remember things without an admin turning anything on. If this list grows
+		// again, that should be a deliberate decision, which is why it's asserted
+		// exactly rather than with `toContain`.
+		expect(baseline).toEqual(["http.fetch", "memory.save", "memory.search"]);
 	});
 });

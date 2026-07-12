@@ -18,6 +18,7 @@ import { getSkillImpl } from "../_libs/skillImpls";
 import "../impls/_stubs";
 // Real impls registered after stubs — last registration wins.
 import "../impls/httpFetch";
+import "../impls/memorySave";
 import "../impls/memorySearch";
 import "../impls/sandboxBash";
 import "../impls/sandboxBrowse";
@@ -28,10 +29,11 @@ import "../impls/sandboxWrite";
  * Central dispatcher for every tool call. Pipeline:
  *
  *   1. Look up the catalog entry → short-circuit `Unknown tool` if missing.
- *   2. Confirmation gate: catalog `sideEffect === "write"` OR a dangerous
- *      arg pattern (rm -rf, sudo, curl | sh, …) returns
- *      `{requireConfirmation, preview}` without ever invoking the impl.
- *      Real human-in-loop wiring lands in M3-T11.
+ *   2. Confirmation gate: the catalog's `requiresConfirmation` policy (which
+ *      defaults to `sideEffect === "write"`, but a skill may opt out — see
+ *      `SkillCatalogAgg`) OR a dangerous arg pattern (rm -rf, sudo, curl | sh,
+ *      …) returns `{requireConfirmation, preview}` without ever invoking the
+ *      impl. Real human-in-loop wiring lands in M3-T11.
  *   3. Look up the impl → format "Unknown tool" if none registered.
  *   4. Run the impl inside a fresh `AbortController` so we have somewhere
  *      to plumb timeouts / upstream cancellations from future callers.
@@ -104,13 +106,17 @@ const invoke = internalAction({
 		// Dangerous-arg heuristic NEVER bypassed. Declared write can be
 		// waived in dev via DEV_AUTO_APPROVE_WRITES=1 so sandbox.bash /
 		// sandbox.write are runnable before M3-T11 lands human-in-loop.
-		const declaredWrite = catalog.sideEffect === "write";
+		// Policy, not shape: a skill can declare `sideEffect: "write"` and still
+		// opt out of confirmation when the write is reversible and scoped to our
+		// own tenant data (e.g. `memory.save`). Absent an explicit opt-out this
+		// is exactly the old `sideEffect === "write"` behaviour.
+		const declaredWrite = catalog.requiresConfirmation ?? catalog.sideEffect === "write";
 		const dangerous = hasDangerousArgPattern(args.args);
 		const devAutoApprove = process.env.DEV_AUTO_APPROVE_WRITES === "1";
 		const shouldGate = dangerous || (declaredWrite && !devAutoApprove);
 		if (shouldGate) {
 			audit("requireConfirmation", {
-				reason: dangerous ? "dangerousArgPattern" : "sideEffect=write",
+				reason: dangerous ? "dangerousArgPattern" : "requiresConfirmation",
 			});
 			return {
 				requireConfirmation: true,

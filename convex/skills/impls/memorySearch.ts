@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { internal } from "../../_generated/api";
+import type { MemoryScope } from "../../memory/domain/memory.model";
 import { type SkillImpl, registerSkill } from "../_libs/skillImpls";
 
 /**
@@ -38,7 +39,7 @@ const MemorySearchArgs = z.object({
 export type MemorySearchHit = {
 	_id: string;
 	content: string;
-	scope: "org" | "agent" | "thread";
+	scope: MemoryScope;
 	alwaysOn: boolean;
 };
 

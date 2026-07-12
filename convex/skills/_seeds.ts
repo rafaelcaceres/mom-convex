@@ -31,6 +31,16 @@ const memorySearchArgs = z.object({
 	limit: z.number().int().positive().max(50).optional(),
 });
 
+const memorySaveArgs = z.object({
+	content: z.string().min(1).max(8000),
+	// Omitted ⇒ the impl files the memory under the current channel (Slack), or
+	// the current thread when the platform has no channel (web chat). The model
+	// is not asked to know which, because it can't: the binding lives on the
+	// thread row, not in the conversation.
+	scope: z.enum(["channel", "thread"]).optional(),
+	alwaysOn: z.boolean().optional(),
+});
+
 const sandboxBashArgs = z.object({
 	command: z.string(),
 	timeoutMs: z.number().int().positive().max(60_000).optional(),
@@ -65,6 +75,19 @@ export const BUILT_IN_SKILLS: readonly NewSkillCatalog[] = [
 		description: "Semantic search over the org's long-lived memory.",
 		zodSchemaJson: zodToJsonSchemaString(memorySearchArgs),
 		sideEffect: "read",
+		enabled: true,
+	},
+	{
+		key: "memory.save",
+		name: "Memory Save",
+		description:
+			"Remember a durable fact. Defaults to the current Slack channel (shared by every thread in that channel) — or the current conversation when there is no channel. Use for facts worth recalling in a later conversation, not for chit-chat.",
+		zodSchemaJson: zodToJsonSchemaString(memorySaveArgs),
+		// It genuinely writes — the audit trail should say so — but it writes a
+		// reversible row in our own DB, scoped to a room the user is already in.
+		// Nothing like `sandbox.bash`, so it opts out of human confirmation.
+		sideEffect: "write",
+		requiresConfirmation: false,
 		enabled: true,
 	},
 	{

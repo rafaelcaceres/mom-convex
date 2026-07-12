@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import type { MemoryScope } from "../../../../convex/memory/domain/memory.model";
 
 type Props = {
 	agentId: Id<"agents">;
@@ -54,9 +55,13 @@ export function MemoryEditor({ agentId, orgId, disabled }: Props) {
 		id: Id<"memory">,
 		current: boolean,
 		content: string,
-		scope: Scope | "thread",
+		scope: MemoryScope,
 	) {
-		if (scope === "thread") return;
+		// Only org/agent rows are editable here. Channel- and thread-scoped
+		// memories belong to a conversation, not to the agent's configuration,
+		// and `upsertMemory` would reject the patch anyway (their scope carries
+		// a channelKey/threadId this screen doesn't have).
+		if (scope !== "org" && scope !== "agent") return;
 		setPendingId(id);
 		setError(null);
 		try {

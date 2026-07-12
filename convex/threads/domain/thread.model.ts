@@ -70,6 +70,35 @@ export function bindingKey(binding: AdapterBinding): string {
 	}
 }
 
+/**
+ * Canonical identity of the *room* a thread lives in, or `undefined` when the
+ * platform has no room concept.
+ *
+ * This is the key `channel`-scoped memories are filed under (M3-T02 follow-on):
+ * every Slack thread in `#eng` resolves to the same channel key, so a fact the
+ * bot learns in one thread is available in the next — while `#sales` resolves
+ * to a different key and never sees it.
+ *
+ * Deliberately NOT derived from `bindingKey`, which includes `threadTs` and is
+ * therefore unique per thread. Dropping the `threadTs` segment is the whole
+ * point: `slack:<installId>:<channelId>`.
+ *
+ * `web` returns `undefined` rather than inventing a per-user pseudo-channel —
+ * the web binding is already one thread per user, so `thread` scope covers it
+ * exactly, and a fake channel key would just be a second name for the same set.
+ * `event` likewise has no room. Callers must treat `undefined` as "no channel
+ * memories apply", never as a wildcard.
+ */
+export function channelKeyFromBinding(binding: AdapterBinding): string | undefined {
+	switch (binding.type) {
+		case "slack":
+			return `slack:${binding.installId}:${binding.channelId}`;
+		case "web":
+		case "event":
+			return undefined;
+	}
+}
+
 export class ThreadAgg implements IAggregate<Thread> {
 	constructor(private readonly thread: Thread) {}
 

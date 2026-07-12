@@ -24,6 +24,12 @@ export const memoryTables = {
 		.index("by_org_scope", ["orgId", "scope"])
 		.index("by_agent", ["agentId"])
 		.index("by_thread", ["threadId"])
+		// Channel-scoped rows are read on every turn in that channel, and a busy
+		// org can have far more of them than the per-scope `take()` cap would
+		// safely cover if we filtered `by_org_scope` in memory. Index the key
+		// directly so a channel's memories are a point lookup, not a scan of
+		// every channel in the org.
+		.index("by_org_channel", ["orgId", "channelKey"])
 		.vectorIndex("by_embedding", {
 			vectorField: "embedding",
 			dimensions: 1536,

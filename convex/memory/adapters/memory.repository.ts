@@ -37,15 +37,29 @@ export const MemoryRepository: IMemoryRepository = {
 		return [...orgRows, ...scoped];
 	},
 
-	listForThread: async (ctx, { orgId, agentId, threadId }) => {
-		const [orgRows, agentRows, threadRows] = await Promise.all([
+	listForThread: async (ctx, { orgId, agentId, threadId, channelKey }) => {
+		const [orgRows, agentRows, threadRows, channelRows] = await Promise.all([
 			listByOrgScope(ctx, orgId, "org"),
 			listByOrgScope(ctx, orgId, "agent"),
 			listByOrgScope(ctx, orgId, "thread"),
+			// No channel on this turn (web chat, scheduled event) ⇒ no channel
+			// rows. Skipping the query entirely, rather than fetching and
+			// filtering, keeps "absent key" from ever degrading into "any key".
+			channelKey === undefined
+				? Promise.resolve([] as MemoryAgg[])
+				: MemoryRepository.listForChannel(ctx, { orgId, channelKey }),
 		]);
 		const agentScoped = agentRows.filter((agg) => agg.getModel().agentId === agentId);
 		const threadScoped = threadRows.filter((agg) => agg.getModel().threadId === threadId);
-		return [...orgRows, ...agentScoped, ...threadScoped];
+		return [...orgRows, ...agentScoped, ...channelRows, ...threadScoped];
+	},
+
+	listForChannel: async (ctx, { orgId, channelKey }) => {
+		const docs = await ctx.db
+			.query("memory")
+			.withIndex("by_org_channel", (q) => q.eq("orgId", orgId).eq("channelKey", channelKey))
+			.take(MAX_MEMORIES_PER_SCOPE);
+		return docs.map((doc) => new MemoryAgg(doc));
 	},
 
 	listAlwaysOn: async (ctx, clause) => {

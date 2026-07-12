@@ -18,6 +18,21 @@ export const NewSkillCatalogModel = v.object({
 	zodSchemaJson: v.string(),
 	requiredCredType: v.optional(v.string()),
 	sideEffect: v.union(v.literal("read"), v.literal("write")),
+	/**
+	 * Whether a human must approve each call. Defaults to `sideEffect === "write"`
+	 * when absent, which is why existing catalog rows keep their behaviour.
+	 *
+	 * Split from `sideEffect` because the two answer different questions.
+	 * `sideEffect` describes what the skill *does* — it feeds the audit log and
+	 * tells the model whether a call is repeatable. Confirmation is *policy*:
+	 * how much do we trust the agent to do this unsupervised? Conflating them
+	 * forces a false choice for a skill like `memory.save`, which genuinely
+	 * writes but writes a reversible, tenant-scoped row in our own database —
+	 * nothing like `sandbox.bash`, which needs a human precisely because it
+	 * executes arbitrary code. The alternative (mislabelling it `read`) would
+	 * corrupt the audit trail to buy a policy exemption.
+	 */
+	requiresConfirmation: v.optional(v.boolean()),
 	enabled: v.boolean(),
 });
 
@@ -38,12 +53,17 @@ export class SkillCatalogAgg implements IAggregate<SkillCatalog> {
 	}
 
 	/**
-	 * Declarative gate: any skill marked `write` must go through the
-	 * human-in-loop flow (M3-T11). Per-call heuristics (e.g. a bash skill
-	 * declared `read` but called with `rm -rf`) live in `skills.invoke`
-	 * (M2-T05), which has access to the runtime args.
+	 * Declarative gate: does a call need human approval (M3-T11)?
+	 *
+	 * Defaults to "yes" for writes, so a skill author who says nothing gets the
+	 * safe answer. An entry opts out explicitly by setting
+	 * `requiresConfirmation: false` — a deliberate act, visible in the catalog.
+	 *
+	 * Per-call heuristics (e.g. a bash skill declared `read` but invoked with
+	 * `rm -rf`) live in `skills.invoke` (M2-T05), which sees the runtime args
+	 * and can gate a call this method would have waved through.
 	 */
 	requiresConfirmation(): boolean {
-		return this.skill.sideEffect === "write";
+		return this.skill.requiresConfirmation ?? this.skill.sideEffect === "write";
 	}
 }

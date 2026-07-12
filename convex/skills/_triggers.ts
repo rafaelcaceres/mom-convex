@@ -7,10 +7,18 @@ import { SkillCatalogRepository } from "./adapters/skillCatalog.repository";
 /**
  * Baseline skills handed to every newly-inserted agent. Keep this list short:
  * any skill added here auto-enables on fresh agents across all orgs, which
- * widens attack surface and token spend. `http.fetch` + `memory.search` are
- * read-only and low-risk.
+ * widens attack surface and token spend.
+ *
+ * `http.fetch` + `memory.search` are read-only and low-risk. `memory.save` is
+ * the one write here, and it earns the slot: remembering is the whole point of
+ * the product, and an agent that can only *read* memory can never populate it.
+ * Its blast radius is a reversible row scoped to the room the conversation is
+ * already in — see the catalog entry, which opts it out of confirmation
+ * deliberately rather than by mislabelling its side effect.
+ *
+ * Existing agents predate this list; `backfillBaselineSkills` grants it to them.
  */
-export const BASELINE_SKILL_KEYS = ["http.fetch", "memory.search"] as const;
+export const BASELINE_SKILL_KEYS = ["http.fetch", "memory.search", "memory.save"] as const;
 
 /**
  * Idempotent baseline seed for a single agent. Shared between the trigger

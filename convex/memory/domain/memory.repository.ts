@@ -23,8 +23,14 @@ export interface IMemoryRepository extends IRepository<"memory", MemoryAgg> {
 	): Promise<MemoryAgg[]>;
 
 	/**
-	 * Org-wide + agent-scoped (for `agentId`) + thread-scoped (for `threadId`)
-	 * rows — the full set visible to a single turn.
+	 * Org-wide + agent-scoped (for `agentId`) + channel-scoped (for
+	 * `channelKey`) + thread-scoped (for `threadId`) rows — the full set visible
+	 * to a single turn.
+	 *
+	 * `channelKey` is optional because not every platform has a room (web chat,
+	 * scheduled events). When it is absent, NO channel rows are returned — the
+	 * caller must not be able to accidentally widen the query into "every
+	 * channel in the org" by omitting it.
 	 */
 	listForThread(
 		ctx: QueryCtx,
@@ -32,6 +38,7 @@ export interface IMemoryRepository extends IRepository<"memory", MemoryAgg> {
 			orgId: Memory["orgId"];
 			agentId: NonNullable<Memory["agentId"]>;
 			threadId: NonNullable<Memory["threadId"]>;
+			channelKey?: string;
 		},
 	): Promise<MemoryAgg[]>;
 
@@ -45,6 +52,13 @@ export interface IMemoryRepository extends IRepository<"memory", MemoryAgg> {
 			orgId: Memory["orgId"];
 			agentId: NonNullable<Memory["agentId"]>;
 			threadId: NonNullable<Memory["threadId"]>;
+			channelKey?: string;
 		},
+	): Promise<MemoryAgg[]>;
+
+	/** Channel-scoped rows for one room. Used by the channel memory UI/admin. */
+	listForChannel(
+		ctx: QueryCtx,
+		clause: { orgId: Memory["orgId"]; channelKey: string },
 	): Promise<MemoryAgg[]>;
 }
