@@ -21,7 +21,8 @@ import type { EmbeddingModelV3 } from "@ai-sdk/provider";
  * `OPENAI_EMBEDDING_KEY` is deliberately separate from the chat model's
  * credentials (Anthropic) — embeddings are a different provider and a
  * different billing line, and we don't want one key's rotation to take down
- * both paths.
+ * both paths. It falls back to `OPENAI_API_KEY` so a deployment that already
+ * holds an OpenAI credential doesn't have to store the same secret twice.
  */
 
 export const EMBEDDING_MODEL_ID = "text-embedding-3-small";
@@ -32,11 +33,15 @@ let testModelOverride: EmbeddingModelV3 | null = null;
 export function resolveEmbeddingModel(): EmbeddingModelV3 {
 	if (testModelOverride) return testModelOverride;
 
-	const apiKey = process.env.OPENAI_EMBEDDING_KEY;
+	// A dedicated key wins when present, so embeddings can be billed and rotated
+	// independently of anything else we call OpenAI for. Falling back to the
+	// general key means a deployment that already talks to OpenAI doesn't have to
+	// store the same secret twice just to turn memory on.
+	const apiKey = process.env.OPENAI_EMBEDDING_KEY ?? process.env.OPENAI_API_KEY;
 	if (!apiKey) {
 		throw new Error(
-			"OPENAI_EMBEDDING_KEY is not set — memory embeddings cannot be generated. " +
-				"Set it with `pnpm exec convex env set OPENAI_EMBEDDING_KEY sk-...`.",
+			"Neither OPENAI_EMBEDDING_KEY nor OPENAI_API_KEY is set — memory embeddings cannot be generated. " +
+				"Set one with `pnpm exec convex env set OPENAI_EMBEDDING_KEY sk-...`.",
 		);
 	}
 
