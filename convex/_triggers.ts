@@ -1,5 +1,6 @@
 import { Triggers } from "convex-helpers/server/triggers";
 import type { DataModel } from "./_generated/dataModel";
+import { syncMemoryEmbedding } from "./memory/_triggers";
 import { seedBaselineSkillsForAgent } from "./skills/_triggers";
 
 /**
@@ -15,3 +16,4 @@ import { seedBaselineSkillsForAgent } from "./skills/_triggers";
 export const triggers = new Triggers<DataModel>();
 
 triggers.register("agents", seedBaselineSkillsForAgent);
+triggers.register("memory", syncMemoryEmbedding);

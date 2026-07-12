@@ -12,8 +12,10 @@ import type { IAggregate } from "../../_shared/_libs/aggregate";
  * (wired in M2-T09). `alwaysOn: false` rows live only for semantic retrieval
  * via `ctx.vectorSearch` on the `by_embedding` vector index (M3-T04).
  *
- * `embedding` stays optional here — M3-T02 will generate it in a trigger via
- * `embedMany` from `@convex-dev/agent`. Nothing in M2 reads it.
+ * `embedding` stays optional because it is filled *asynchronously*: a trigger
+ * on this table schedules an action that embeds `content` via `embedMany` from
+ * `@convex-dev/agent` and writes the vector back (M3-T02). A row therefore
+ * exists — and is readable — for a beat before it is searchable.
  *
  * Scope invariants (enforced at the mutation layer, not the aggregate — the
  * validator already forbids impossible field combinations via the validator):
@@ -88,6 +90,16 @@ export class MemoryAgg implements IAggregate<Memory> {
 
 	setAlwaysOn(next: boolean): void {
 		this.memory.alwaysOn = next;
+	}
+
+	/**
+	 * Attach the vector for the current `content`. Written only by the
+	 * embedding action's compare-and-set mutation (M3-T02) — never by a
+	 * user-facing path, because the vector must always correspond to the
+	 * content that produced it.
+	 */
+	setEmbedding(vector: number[]): void {
+		this.memory.embedding = vector;
 	}
 
 	touch(updatedBy: Memory["updatedBy"], now: number): void {
