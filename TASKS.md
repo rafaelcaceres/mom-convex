@@ -11,15 +11,15 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 ## Status
 
-- **Current milestone:** M2 — Agente real + Vercel Sandbox
-- **Last updated:** 2026-04-26
-- **Overall:** 39 / 62 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Current milestone:** M3 — RAG + integrações reais
+- **Last updated:** 2026-07-12
+- **Overall:** 42 / 63 (2 cortadas após revisão: M3-T01, M3-T03)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
-| M2 — Agente real + Vercel Sandbox | 17 | 19 |
+| M2 — Agente real + Vercel Sandbox | 20 | 20 |
 | M3 — RAG + integrações reais | 0 | 12 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
@@ -74,7 +74,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - [x] [M2-T16](tasks/m2-agent-sandbox/M2-T16-sandbox-gc-cron.md) — Sandbox GC cron
 - [x] [M2-T17](tasks/m2-agent-sandbox/M2-T17-ui-agent-edit.md) — UI /agents/[id]/edit
 - [x] [M2-T18](tasks/m2-agent-sandbox/M2-T18-ui-thread-detail.md) — UI tool calls + cost (entregue inline no `/chat` via F-02; spec literal de `/threads/[id]` superseded)
-- [ ] [M2-T19](tasks/m2-agent-sandbox/M2-T19-smoke-m2.md) — **Smoke M2 FizzBuzz**
+- [x] [M2-T19](tasks/m2-agent-sandbox/M2-T19-smoke-m2.md) — **Smoke M2 FizzBuzz**
 - [x] [M2-T20](tasks/m2-agent-sandbox/M2-T20-slack-user-cache.md) — Slack user-cache + mention resolution
 - [x] [M2-T21](tasks/m2-agent-sandbox/M2-T21-slack-tool-duration.md) — Slack tool reply — duração da execução
 
@@ -127,6 +127,8 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 - **M0-T05 spike resultado**: `@djpanda/convex-tenants@0.1.6` + `@djpanda/convex-authz@0.1.7` integram bem com `@convex-dev/auth@0.0.91`. Peer-dep exige authz `0.1.7` (não `2.x`). API do `makeTenantsAPI` não tem `createInvitation`/`declineInvitation`/`revokeInvitation` — usa `inviteMember`/`cancelInvitation`/`resendInvitation`/`acceptInvitation`. Stability: OK pra seguir. Smoke test de E2E multi-tenant (user A cria org, user B não vê) **deferido pra M1-T01** quando teremos mutations próprias chamando `checkPermission`.
 
 ## Decisões tomadas durante execução
+
+- **M2-T19 (2026-07-12) — M2 fechado** — Smoke faux (`test/smoke/m2.test.ts`) já estava no disco e verde: provider scripted (`MockLanguageModelV3`) dirige o loop de 3 steps (`sandbox.write` → `sandbox.bash` → texto final), `ISandboxClient` trocado por fake in-memory (roda sem `VERCEL_TOKEN`), e as 3 asserções do gate passam — 1 row `active` em `sandboxes` por thread, `costLedger` com ambos os `stepType` (`text-generation` + `tool-call`, com `sandbox_write`/`sandbox_bash` nomeados), e mensagem final contendo o stdout do FizzBuzz. **Checklist manual fechado por decisão do owner**, não re-executado nesta sessão: o log de M2-T12 (2026-04-23) já registra o FizzBuzz rodando em Python via chat real com output correto, e o item `/threads/[id]` da spec foi superseded por F-02 (tool calls inline no `/chat`). O que **não** foi re-verificado: streaming no web chat, `@mom` no Slack real, e inspeção das rows de `costLedger` no dashboard — se algum desses regrediu desde abril, o smoke faux não pega (ele mocka provider e sandbox). **Contagem corrigida**: a tabela dizia M2 17/19, mas M2-T20 e M2-T21 tinham sido adicionadas depois sem bumpar o total, e não existe M2-T13 — M2 real é 20 tasks, todas done; overall vai de 62 → 63.
 
 - **M2-T17 (2026-04-24)** — UI `/agents/[id]/edit`. Stack igual ao resto do app (Next 15 App Router + inline styles) — **não trouxe shadcn/Tailwind v4** que a spec menciona: o repo inteiro usa inline styles (chat, settings/slack, onboarding), introduzir um design-system pra uma tela seria churn desproporcional. Fica pra uma task dedicada quando aparecer o segundo screen que peça. **Backend novo**: `updateAgent` (admin-only, patch de `systemPrompt` + `modelId`; provider derivado do catálogo pra (modelId, provider) nunca ficar inconsistente) substitui `updateSystemPrompt` no fluxo de UI mas o antigo fica (convex member-level, usado por paths internos). `supportedModels` em `convex/agents/_libs/` com 5 modelos Anthropic — teste de drift vs. `MODEL_PRICES` garante que nenhum modelo chegue ao dropdown sem preço (senão ledger zero-priceia todos os turns). `listCatalogWithBindings` faz join catalog × bindings pra UI mostrar TODOS os skills (enabled + disabled) vs. `listForAgent` que só devolve enabled (usado pelo `resolveTools`); adicionado `listAllForAgent` no repo pra não misturar as duas responsabilidades. **Aggregate** ganhou método `updateModel({modelId, modelProvider})` pra não mutar model via `getModel()` direto (pattern que já existia em `updateSystemPrompt`). **ModelSelector** pinga "legacy" como opção quando o modelId atual não está mais no catálogo — owner vê o que tá ativo e troca deliberadamente, em vez do dropdown re-selecionar silenciosamente o primeiro item. **Read-only gate** via `getUserRoles` — non-admin vê banner + todos os inputs disabled, matches precedent de `/settings/slack`. **MemoryEditor** só mostra `org`/`agent` scope (thread-scoped memories não pertencem a uma tela de agent-edit; `listForAgent` já filtra server-side, guard na UI é defesa-em-profundidade). **E2E spec não criada** — repo não tem playwright.config configurado (mesmo trade-off herdado de M1-T14); os 4 cases de acceptance foram implementados como convex-test vitest em `updateAgent.test.ts`: cobrem prompt persiste, skill toggle off removeu do `listResolvedForAgentInternal` (exatamente o que `resolveTools` lê, então "agente perde acesso"), memory alwaysOn aparece em `listAlwaysOnInternal`, non-admin → forbidden em todas as mutations (agent + skills + memory). 9 testes novos (2 supportedModels + 7 updateAgent), suite total 414+1.
 
