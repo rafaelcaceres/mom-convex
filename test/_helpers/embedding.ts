@@ -38,3 +38,44 @@ export function mockEmbeddingModel(): MockEmbeddingModelV3 {
 		}),
 	});
 }
+
+/**
+ * Hashed bag-of-words embedding — the model to use when a test asserts on
+ * *retrieval*, not on plumbing.
+ *
+ * `fakeEmbeddingFor` above is a hash of the whole string: identical texts land
+ * on identical vectors, and everything else is unrelated noise. That is all a
+ * trigger test needs ("this row got a vector, and it's this row's vector"), but
+ * it makes semantic search untestable — the only query that can retrieve a
+ * memory is its exact content, so ranking, thresholds, and near-misses can't be
+ * exercised at all.
+ *
+ * Here each *word* gets an axis, so cosine similarity is word overlap: a query
+ * shares a term with a memory ⇒ score > 0, shares none ⇒ score is exactly 0.
+ * Crude next to a real embedding model — no synonyms, no semantics — but it has
+ * the one property `MIN_SCORE` is tuned against (related > threshold >
+ * unrelated), which is what the assertions actually rest on.
+ */
+export function bagOfWordsEmbedding(text: string): number[] {
+	const vec = new Array<number>(EMBEDDING_DIMENSIONS).fill(0);
+	for (const word of text.toLowerCase().match(/[a-z0-9]+/g) ?? []) {
+		let axis = 0;
+		for (let i = 0; i < word.length; i++) {
+			axis = (axis * 31 + word.charCodeAt(i)) % EMBEDDING_DIMENSIONS;
+		}
+		vec[axis] = (vec[axis] ?? 0) + 1;
+	}
+	const norm = Math.sqrt(vec.reduce((sum, x) => sum + x * x, 0));
+	// Text with no word characters at all yields the zero vector; cosine against
+	// it is 0, which is the honest answer ("matches nothing"), not a crash.
+	return norm === 0 ? vec : vec.map((x) => x / norm);
+}
+
+export function bagOfWordsEmbeddingModel(): MockEmbeddingModelV3 {
+	return new MockEmbeddingModelV3({
+		doEmbed: async ({ values }) => ({
+			embeddings: values.map((v) => bagOfWordsEmbedding(v)),
+			warnings: [],
+		}),
+	});
+}

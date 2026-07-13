@@ -4,30 +4,31 @@ import type { MemoryScope } from "../../memory/domain/memory.model";
 import { type SkillImpl, registerSkill } from "../_libs/skillImpls";
 
 /**
- * `memory.search` skill — M2 stub for "what do we know about X?".
+ * `memory.search` skill — "what do we know about X?".
  *
- * M2 behaviour: substring / case-insensitive match against the org's
- * always-on memories (the subset already visible to a turn via
- * `listAlwaysOnInternal`). Non-alwaysOn rows exist for semantic retrieval
- * and are left alone here — they need the embedding column that M3-T02 will
- * populate via the agent component's `embedMany`, and they're consumed by
- * the real vector search in M3-T04.
+ * Two sources, two retrieval mechanisms, and they are not the same mechanism:
  *
- * The `scope` arg is about WHERE we look, not the memory-row's own scope:
- *  - `"memory"`  → our `memory` table only.
- *  - `"history"` → message history (RAG). Returns `[]` in M2 — landing in
- *                  M3-T04 once `@convex-dev/agent`'s `fetchContextMessages`
- *                  is wired. Keeping the enum value stable now so agents
- *                  that emit `scope:"history"` don't start failing
- *                  validation when the real path lights up.
- *  - `"all"`     → union. Today that's just memory; in M3 it picks up
- *                  history transparently.
+ *  - `"memory"`  → the `memory` table, by **semantic similarity**
+ *                  (`ctx.vectorSearch` on `by_embedding`, M3-T04). Reaches rows
+ *                  the model has never seen, including `alwaysOn: false` ones
+ *                  that exist purely to be retrieved.
+ *  - `"history"` → this thread's messages, by **keyword**. The component only
+ *                  embeds messages when the Agent carries a `textEmbeddingModel`
+ *                  and ours doesn't, so a vector query here would search an empty
+ *                  index and return nothing forever. Full-text is what the data
+ *                  supports; F-10 tracks embedding messages. Saying "semantic"
+ *                  to the model when we mean "keyword" would just teach it to
+ *                  trust an empty result.
+ *  - `"all"`     → both, concurrently. The default, because the model rarely
+ *                  knows which side a fact was written down on.
  *
- * Output shape is intentionally flat and JSON-serializable because
- * `formatSuccess` in the dispatcher stringifies whatever we return into the
- * model's tool-result text. Ids travel as strings (Convex id strings are
- * opaque) so the model can echo them back in a follow-up without us having
- * to teach it Convex types.
+ * Results are grouped by source rather than interleaved into one ranked list: a
+ * cosine score and a full-text match are not commensurable, and inventing a
+ * blended score would be a number with no meaning attached to it.
+ *
+ * Scope isolation (which memories this turn may see at all) is enforced
+ * server-side in `listVisibleByIdsInternal`, off the thread's own binding — not
+ * here, and never from anything the model supplies.
  */
 
 const MemorySearchArgs = z.object({
@@ -36,43 +37,54 @@ const MemorySearchArgs = z.object({
 	limit: z.number().int().positive().max(50).default(10),
 });
 
-export type MemorySearchHit = {
+export type MemoryHit = {
 	_id: string;
 	content: string;
 	scope: MemoryScope;
 	alwaysOn: boolean;
+	/** Cosine similarity against the query. Only comparable to other memory hits. */
+	score: number;
+};
+
+export type MessageHit = {
+	messageId: string;
+	role: string;
+	text: string;
+	order: number;
+};
+
+export type MemorySearchResult = {
+	memories: MemoryHit[];
+	messages: MessageHit[];
 };
 
 export const memorySearchImpl: SkillImpl = async (ctx, input, options) => {
 	const args = MemorySearchArgs.parse(input);
+	const { orgId, agentId, threadId, agentThreadId } = options.scope;
 
-	if (args.scope === "history") {
-		// Message-history RAG lands in M3-T04. Keep the surface stable.
-		return [] satisfies MemorySearchHit[];
-	}
+	const wantsMemory = args.scope !== "history";
+	const wantsHistory = args.scope !== "memory";
 
-	const { orgId, agentId, threadId } = options.scope;
-	const rows = await ctx.runQuery(internal.memory.queries.listAlwaysOnInternal.default, {
-		orgId,
-		agentId,
-		threadId,
-	});
+	const [memories, messages] = await Promise.all([
+		wantsMemory
+			? ctx.runAction(internal.memory.actions.search.default, {
+					orgId,
+					agentId,
+					threadId,
+					query: args.query,
+					limit: args.limit,
+				})
+			: Promise.resolve([] as MemoryHit[]),
+		wantsHistory
+			? ctx.runAction(internal.agents.actions.searchHistory.default, {
+					agentThreadId,
+					query: args.query,
+					limit: args.limit,
+				})
+			: Promise.resolve([] as MessageHit[]),
+	]);
 
-	const needle = args.query.toLowerCase();
-	const hits: MemorySearchHit[] = [];
-	for (const row of rows) {
-		if (row.content.toLowerCase().includes(needle)) {
-			hits.push({
-				_id: row._id,
-				content: row.content,
-				scope: row.scope,
-				alwaysOn: row.alwaysOn,
-			});
-			if (hits.length >= args.limit) break;
-		}
-	}
-
-	return hits;
+	return { memories, messages } satisfies MemorySearchResult;
 };
 
 registerSkill("memory.search", memorySearchImpl);

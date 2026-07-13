@@ -1,5 +1,5 @@
-import type { Agent } from "@convex-dev/agent";
-import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
+import type { Agent, MessageDoc } from "@convex-dev/agent";
+import { createThread, fetchContextMessages, listMessages, saveMessage } from "@convex-dev/agent";
 import {
 	type StepResult,
 	type StopCondition,
@@ -193,6 +193,55 @@ export async function streamAssistantReply(
 	);
 	const text = await result.text;
 	return { text };
+}
+
+/**
+ * Keyword search over one thread's message history — the `history` half of the
+ * `memory.search` skill (M3-T04).
+ *
+ * **Text search, not vector search.** The component embeds messages only when
+ * the `Agent` is constructed with a `textEmbeddingModel`, and ours is not (see
+ * `agentFactory`); on top of that, our user messages are persisted from
+ * mutations via the free `saveMessage`, which has no model to embed with.
+ * Turning `vectorSearch: true` on today would query an index that no message is
+ * in and return nothing, forever, silently. Full-text over `text` is what the
+ * data actually supports — so that is what this does, and the skill says so to
+ * the model. Embedding messages is a follow-up (F-10), and flipping this flag
+ * is all it takes once they are.
+ *
+ * `recentMessages: 0` because the last N turns are already in the prompt: this
+ * is for reaching *past* that window, and paying tokens to hand the model back
+ * what it can already see is waste.
+ *
+ * `searchOtherThreads` stays off. The component would widen the search to every
+ * message belonging to the same `userId` — across threads, and therefore across
+ * orgs for anyone who belongs to two. The current thread's org is the only one
+ * we've checked.
+ */
+export async function searchThreadMessages(
+	ctx: ActionCtx,
+	args: { agentThreadId: string; searchText: string; limit: number },
+): Promise<MessageDoc[]> {
+	return await fetchContextMessages(ctx, components.agent, {
+		userId: undefined,
+		threadId: args.agentThreadId,
+		searchText: args.searchText,
+		contextOptions: {
+			recentMessages: 0,
+			excludeToolMessages: true,
+			searchOptions: {
+				limit: args.limit,
+				textSearch: true,
+				vectorSearch: false,
+				// One message either side, so a hit reads as an exchange rather than
+				// a decontextualized line. The model has no way to ask for a
+				// neighbouring message, so a bare hit is often unusable: the answer
+				// to a question lives in the message *after* the question.
+				messageRange: { before: 1, after: 1 },
+			},
+			searchOtherThreads: false,
+		},
+	});
 }
 
 export async function listThreadMessages(

@@ -66,4 +66,27 @@ export const MemoryRepository: IMemoryRepository = {
 		const full = await MemoryRepository.listForThread(ctx, clause);
 		return full.filter((agg) => agg.getModel().alwaysOn);
 	},
+
+	listMissingEmbedding: async (ctx, { limit }) => {
+		// A full-table filter, not an index: "has no vector" is a transient state
+		// that a healthy deployment converges out of, so indexing it would cost a
+		// write on every memory forever to serve a query we run once.
+		const docs = await ctx.db
+			.query("memory")
+			.filter((q) => q.eq(q.field("embedding"), undefined))
+			.take(limit);
+		return docs.map((doc) => new MemoryAgg(doc));
+	},
+
+	listVisibleByIds: async (ctx, { orgId, agentId, threadId, channelKey, ids }) => {
+		const rows = await Promise.all(ids.map((id) => MemoryRepository.get(ctx, id)));
+		return rows.filter((agg): agg is MemoryAgg => {
+			if (agg === null) return false;
+			// Re-check the tenant on the row rather than trusting the vector index's
+			// filter: this is the last hop before content reaches the model, and it
+			// costs one field comparison.
+			if (agg.getModel().orgId !== orgId) return false;
+			return agg.matchesScope({ agentId, threadId, channelKey });
+		});
+	},
 };

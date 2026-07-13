@@ -21,6 +21,7 @@ import type * as agents__libs_providerOptions from "../agents/_libs/providerOpti
 import type * as agents__libs_supportedModels from "../agents/_libs/supportedModels.js";
 import type * as agents__libs_systemPrompt from "../agents/_libs/systemPrompt.js";
 import type * as agents__tables from "../agents/_tables.js";
+import type * as agents_actions_searchHistory from "../agents/actions/searchHistory.js";
 import type * as agents_adapters_threadBridge from "../agents/adapters/threadBridge.js";
 import type * as agents_mutations_createAgent from "../agents/mutations/createAgent.js";
 import type * as agents_mutations_setAgentModel from "../agents/mutations/setAgentModel.js";
@@ -47,6 +48,8 @@ import type * as memory__libs_embedding from "../memory/_libs/embedding.js";
 import type * as memory__tables from "../memory/_tables.js";
 import type * as memory__triggers from "../memory/_triggers.js";
 import type * as memory_actions_embed from "../memory/actions/embed.js";
+import type * as memory_actions_search from "../memory/actions/search.js";
+import type * as memory_mutations_backfillEmbeddings from "../memory/mutations/backfillEmbeddings.js";
 import type * as memory_mutations_deleteMemory from "../memory/mutations/deleteMemory.js";
 import type * as memory_mutations_saveFromAgentInternal from "../memory/mutations/saveFromAgentInternal.js";
 import type * as memory_mutations_setEmbeddingInternal from "../memory/mutations/setEmbeddingInternal.js";
@@ -55,6 +58,7 @@ import type * as memory_queries_listAlwaysOn from "../memory/queries/listAlwaysO
 import type * as memory_queries_listAlwaysOnInternal from "../memory/queries/listAlwaysOnInternal.js";
 import type * as memory_queries_listForAgent from "../memory/queries/listForAgent.js";
 import type * as memory_queries_listForThread from "../memory/queries/listForThread.js";
+import type * as memory_queries_listVisibleByIdsInternal from "../memory/queries/listVisibleByIdsInternal.js";
 import type * as sandbox__libs_gc from "../sandbox/_libs/gc.js";
 import type * as sandbox__libs_sandboxAccess from "../sandbox/_libs/sandboxAccess.js";
 import type * as sandbox__libs_vercel from "../sandbox/_libs/vercel.js";
@@ -155,6 +159,7 @@ declare const fullApi: ApiFromModules<{
   "agents/_libs/supportedModels": typeof agents__libs_supportedModels;
   "agents/_libs/systemPrompt": typeof agents__libs_systemPrompt;
   "agents/_tables": typeof agents__tables;
+  "agents/actions/searchHistory": typeof agents_actions_searchHistory;
   "agents/adapters/threadBridge": typeof agents_adapters_threadBridge;
   "agents/mutations/createAgent": typeof agents_mutations_createAgent;
   "agents/mutations/setAgentModel": typeof agents_mutations_setAgentModel;
@@ -181,6 +186,8 @@ declare const fullApi: ApiFromModules<{
   "memory/_tables": typeof memory__tables;
   "memory/_triggers": typeof memory__triggers;
   "memory/actions/embed": typeof memory_actions_embed;
+  "memory/actions/search": typeof memory_actions_search;
+  "memory/mutations/backfillEmbeddings": typeof memory_mutations_backfillEmbeddings;
   "memory/mutations/deleteMemory": typeof memory_mutations_deleteMemory;
   "memory/mutations/saveFromAgentInternal": typeof memory_mutations_saveFromAgentInternal;
   "memory/mutations/setEmbeddingInternal": typeof memory_mutations_setEmbeddingInternal;
@@ -189,6 +196,7 @@ declare const fullApi: ApiFromModules<{
   "memory/queries/listAlwaysOnInternal": typeof memory_queries_listAlwaysOnInternal;
   "memory/queries/listForAgent": typeof memory_queries_listForAgent;
   "memory/queries/listForThread": typeof memory_queries_listForThread;
+  "memory/queries/listVisibleByIdsInternal": typeof memory_queries_listVisibleByIdsInternal;
   "sandbox/_libs/gc": typeof sandbox__libs_gc;
   "sandbox/_libs/sandboxAccess": typeof sandbox__libs_sandboxAccess;
   "sandbox/_libs/vercel": typeof sandbox__libs_vercel;

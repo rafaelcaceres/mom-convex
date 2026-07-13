@@ -1,3 +1,4 @@
+import type { Id } from "../../_generated/dataModel";
 import type { QueryCtx } from "../../_generated/server";
 import type { IRepository } from "../../_shared/_libs/repository";
 import type { Memory, MemoryAgg } from "./memory.model";
@@ -61,4 +62,44 @@ export interface IMemoryRepository extends IRepository<"memory", MemoryAgg> {
 		ctx: QueryCtx,
 		clause: { orgId: Memory["orgId"]; channelKey: string },
 	): Promise<MemoryAgg[]>;
+
+	/**
+	 * Hydrate ids returned by `ctx.vectorSearch` on `by_embedding`, keeping only
+	 * the rows this turn is actually allowed to see (M3-T04).
+	 *
+	 * The vector index carries a single filter field, `orgId`, so it can enforce
+	 * the tenant boundary and nothing finer. Scope is the rest of the boundary:
+	 * an `agent`-scoped row belonging to another agent, or a `channel`-scoped row
+	 * from `#sales`, is semantically similar to the query in exactly the same way
+	 * a legitimate hit is — similarity is not permission. So the same
+	 * `matchesScope` rule that gates the system prompt gates retrieval here, and
+	 * `orgId` is re-checked on the row itself rather than trusted from the index.
+	 *
+	 * Ordering is not preserved: vector rank is the caller's business (it holds
+	 * the scores), and a repository that silently reordered by relevance would be
+	 * lying about what it does.
+	 */
+	listVisibleByIds(
+		ctx: QueryCtx,
+		clause: {
+			orgId: Memory["orgId"];
+			agentId: NonNullable<Memory["agentId"]>;
+			threadId: NonNullable<Memory["threadId"]>;
+			channelKey?: string;
+			ids: Id<"memory">[];
+		},
+	): Promise<MemoryAgg[]>;
+
+	/**
+	 * Rows with no vector, across every org. Feeds the one-shot backfill
+	 * (`backfillEmbeddings`).
+	 *
+	 * These exist because the embedding trigger (M3-T02) only fires on insert or
+	 * a content change: a memory written *before* that trigger shipped will never
+	 * be re-embedded on its own — editing it is the only thing that would, and
+	 * nobody edits a memory to make it findable. Without this they'd be
+	 * permanently invisible to `memory.search`, which is a silent hole rather
+	 * than a visible failure.
+	 */
+	listMissingEmbedding(ctx: QueryCtx, clause: { limit: number }): Promise<MemoryAgg[]>;
 }
