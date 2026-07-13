@@ -3,6 +3,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { agentTables } from "./agents/_tables";
 import { costTables } from "./cost/_tables";
+import { eventTables } from "./events/_tables";
 import { memoryTables } from "./memory/_tables";
 import { sandboxTables } from "./sandbox/_tables";
 import { skillTables } from "./skills/_tables";
@@ -18,6 +19,7 @@ export default defineSchema({
 	...memoryTables,
 	...sandboxTables,
 	...costTables,
+	...eventTables,
 
 	// Test-only fixture table used by repository factory tests (M0-T04).
 	// Safe to keep: domains register their real tables via their own `_tables.ts`.

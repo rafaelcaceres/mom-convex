@@ -1,4 +1,5 @@
 import agentTest from "@convex-dev/agent/test";
+import cronsTest from "@convex-dev/crons/test";
 import authzTest from "@djpanda/convex-authz/test";
 import tenantsTest from "@djpanda/convex-tenants/test";
 import { convexTest } from "convex-test";
@@ -23,5 +24,6 @@ export function newTest() {
 	tenantsTest.register(t, "tenants");
 	authzTest.register(t, "authz");
 	agentTest.register(t, "agent");
+	cronsTest.register(t, "crons");
 	return t;
 }
