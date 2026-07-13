@@ -163,6 +163,8 @@ export interface SlackUserListMember {
 	name: string;
 	deleted?: boolean;
 	is_bot?: boolean;
+	/** IANA zone, e.g. `America/Sao_Paulo`. Slack sends it; we cache it for scheduling. */
+	tz?: string;
 	profile?: { display_name?: string; real_name?: string };
 }
 

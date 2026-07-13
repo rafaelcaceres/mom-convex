@@ -75,11 +75,36 @@ describe("M4-T01 event schedule — validation", () => {
 		expect(nextRunFor(schedule, NOW)).toBeGreaterThan(NOW);
 	});
 
-	it("interprets the cron in UTC — NOW is 12:00Z, so daily-at-13h-UTC is one hour away", () => {
-		// Pins the UTC contract: schedules carry no timezone (the delivery engine,
-		// @convex-dev/crons, is UTC-only), so 13:00 means 13:00Z, nothing local.
+	it("a cron with no timezone means UTC — NOW is 12:00Z, so 13h is one hour away", () => {
+		// The load-bearing assertion of the whole timezone story. Both cron
+		// libraries resolve an ABSENT zone against the HOST's local clock, not UTC:
+		// run this on a São Paulo laptop with the fallback removed and 13:00 lands
+		// at 16:00Z. `DEFAULT_TIMEZONE` is what keeps "absent" meaning "UTC"
+		// everywhere instead of "wherever this process happens to run".
 		const next = nextRunFor({ type: "periodic", cron: "0 13 * * *" }, NOW);
 		expect(next).toBe(NOW + HOUR);
+	});
+
+	it("honours an IANA timezone — 9am in São Paulo is 12:00Z", () => {
+		// The bug this whole change exists to kill: without a zone, "todo dia às
+		// 9h" fires at 9am UTC, which is 6am for the person who asked.
+		const next = nextRunFor(
+			{ type: "periodic", cron: "0 9 * * *", timezone: "America/Sao_Paulo" },
+			NOW,
+		);
+		// NOW is 2026-07-12T12:00:00Z, which IS 09:00 in São Paulo (UTC-3) — so the
+		// next 9am-SP is tomorrow, at 12:00Z again.
+		expect(new Date(next as number).toISOString()).toBe("2026-07-13T12:00:00.000Z");
+	});
+
+	it("the same cron in two zones resolves to two different instants", () => {
+		const utc = nextRunFor({ type: "periodic", cron: "0 9 * * *" }, NOW);
+		const sp = nextRunFor(
+			{ type: "periodic", cron: "0 9 * * *", timezone: "America/Sao_Paulo" },
+			NOW,
+		);
+		// If these collapsed, `timezone` would be decoration.
+		expect(utc).not.toBe(sp);
 	});
 
 	it("rejects a malformed cron expression", () => {
@@ -87,6 +112,16 @@ describe("M4-T01 event schedule — validation", () => {
 		expect(() => assertSchedulable({ type: "periodic", cron: "99 * * * *" }, NOW)).toThrow(
 			/invalid cron/,
 		);
+	});
+
+	it("rejects an unknown timezone at the boundary, not at fire time", () => {
+		// croner resolves zones lazily, so without the `nextRun()` probe in
+		// parseCron this would be accepted here and detonate hours later inside the
+		// scheduler — where the user sees a reminder that never came.
+		expect(() => parseCron("0 9 * * *", "Mars/Olympus")).toThrow(/invalid cron/);
+		expect(() =>
+			assertSchedulable({ type: "periodic", cron: "0 9 * * *", timezone: "Mars/Olympus" }, NOW),
+		).toThrow(/invalid cron/);
 	});
 
 	it("rejects a cron that is valid but never occurs (Feb 30th)", () => {

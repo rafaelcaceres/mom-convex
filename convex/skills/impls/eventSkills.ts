@@ -18,10 +18,14 @@ import { type SkillImpl, registerSkill } from "../_libs/skillImpls";
  * differently:
  *  - `afterMinutes` — for relative asks ("in an hour"). Immune to clock and
  *    timezone mistakes, so the tool description steers the model here first.
- *  - `at` — ISO 8601 UTC, for absolute asks ("tomorrow 14h UTC"). The system
- *    prompt carries a `## Current Time` UTC clock precisely so the model can
- *    compute these.
- *  - `cron` — 5/6-field cron, UTC, for recurring asks.
+ *  - `at` — ISO 8601 with a mandatory `Z`, for absolute asks. An unlabelled
+ *    local time is precisely the three-hours-off bug, so zod rejects it.
+ *  - `cron` — recurring, paired with `timezone`. The `## Current Time` block
+ *    hands the model both clocks and the user's IANA zone, so it can pass one.
+ *
+ * `timezone` on a cron is the difference between "todo dia às 9h" meaning the
+ * user's morning and meaning 6am in São Paulo. Absent ⇒ UTC, deliberately and
+ * explicitly (never the host's zone — see `parseCron`).
  */
 
 const EventCreateArgs = z
@@ -34,6 +38,7 @@ const EventCreateArgs = z
 			.max(60 * 24 * 366) // a year out; beyond that it's a typo, not a plan
 			.optional(),
 		cron: z.string().optional(),
+		timezone: z.string().optional(),
 	})
 	.refine((a) => [a.at, a.afterMinutes, a.cron].filter((x) => x !== undefined).length === 1, {
 		message: "provide exactly one of `at`, `afterMinutes`, or `cron`",
@@ -57,12 +62,14 @@ export const eventCreateImpl: SkillImpl = async (ctx, input, options) => {
 		text: args.text,
 		at,
 		cron: args.cron,
+		timezone: args.timezone,
 	});
 
 	return {
 		created: true,
 		eventId: result.eventId,
 		scheduleType: result.scheduleType,
+		timezone: args.cron ? (args.timezone ?? "UTC") : undefined,
 		// ISO, not epoch — the model is going to read this back to a human.
 		nextRunAt: result.nextRunAt ? new Date(result.nextRunAt).toISOString() : undefined,
 	};

@@ -29,7 +29,13 @@ export type SkillInfo = { skillKey: string; name: string; description: string };
  * table). `handle` is the Slack `@username` or the web email; `undefined` for
  * anonymous turns, in which case the whole identity block is omitted.
  */
-export type SenderInfo = { name: string; handle?: string; isBot?: boolean };
+export type SenderInfo = {
+	name: string;
+	handle?: string;
+	isBot?: boolean;
+	/** IANA zone (Slack knows it). Drives the local-time half of `## Current Time`. */
+	timezone?: string;
+};
 
 export type BuildSystemPromptInput = {
 	agent: { name: string; systemPrompt: string };
@@ -65,7 +71,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 	const sender = renderSender(input.sender);
 	if (sender) sections.push(sender);
 
-	const time = renderTime(input.now);
+	const time = renderTime(input.now, input.sender?.timezone);
 	if (time) sections.push(time);
 
 	const users = renderUsers(input.users);
@@ -89,19 +95,48 @@ const SLACK_FORMATTING_BLOCK = [
 ].join("\n");
 
 /**
- * ISO instant plus the weekday, which ISO doesn't carry and "remind me Friday"
- * needs. UTC is stated explicitly because event scheduling (`event.create`)
- * interprets every time in UTC — an unlabelled clock would invite the model to
- * assume the user's local zone and file reminders three hours off.
+ * The clock. Without it the model cannot turn "in an hour" into an instant, and
+ * "on Friday" into a date — the ISO string alone doesn't carry the weekday.
+ *
+ * Both clocks are shown when we know the sender's zone, because the two answer
+ * different questions: the model reasons about *the user's* "9am", but must
+ * hand `event.create` either a UTC instant or a cron plus the zone it belongs
+ * to. Naming the IANA zone is what lets it pass `timezone` instead of guessing —
+ * and guessing here means a reminder three hours off, which is the bug this
+ * block exists to prevent.
+ *
+ * With no known zone we show UTC alone and say so. Wrong-but-honest beats
+ * wrong-and-confident: the model can ask.
  */
-function renderTime(now: number | undefined): string | null {
+function renderTime(now: number | undefined, timezone: string | undefined): string | null {
 	if (now === undefined) return null;
 	const d = new Date(now);
-	const weekday = d.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
-	return [
-		"## Current Time",
-		`${weekday}, ${d.toISOString()} (UTC). All scheduling (crons, reminder times) is interpreted in UTC.`,
-	].join("\n");
+	const weekday = (tz: string) => d.toLocaleDateString("en-US", { weekday: "long", timeZone: tz });
+	const local = (tz: string) => d.toLocaleString("sv-SE", { timeZone: tz }).replace(" ", "T"); // sv-SE ⇒ ISO-shaped
+
+	const lines = ["## Current Time", `- UTC: ${weekday("UTC")}, ${d.toISOString()}`];
+
+	if (timezone) {
+		let localLine: string | null = null;
+		try {
+			localLine = `- User's local time: ${weekday(timezone)}, ${local(timezone)} (${timezone})`;
+		} catch {
+			// An unknown zone from the directory is not worth failing a turn over.
+			localLine = null;
+		}
+		if (localLine) {
+			lines.push(localLine);
+			lines.push(
+				`When scheduling, reason in the user's local time but express it correctly: pass an absolute time as UTC (ISO with \`Z\`), and pass a recurring \`cron\` together with \`timezone: "${timezone}"\`. A cron without a timezone means UTC, which is NOT the user's morning.`,
+			);
+			return lines.join("\n");
+		}
+	}
+
+	lines.push(
+		"The user's timezone is unknown. Times you schedule are interpreted in UTC — if they ask for an absolute hour, confirm which timezone they mean.",
+	);
+	return lines.join("\n");
 }
 
 function renderSender(sender: SenderInfo | undefined): string | null {

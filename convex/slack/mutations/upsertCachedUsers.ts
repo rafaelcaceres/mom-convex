@@ -19,6 +19,7 @@ const upsertCachedUsers = internalMutation({
 				username: v.string(),
 				displayName: v.string(),
 				isBot: v.boolean(),
+				tz: v.optional(v.string()),
 			}),
 		),
 	},
@@ -32,6 +33,7 @@ const upsertCachedUsers = internalMutation({
 				username: u.username,
 				displayName: u.displayName,
 				isBot: u.isBot,
+				tz: u.tz,
 				fetchedAt: args.fetchedAt,
 			});
 		}

@@ -123,7 +123,12 @@ const handleIncoming = internalAction({
 			users: [],
 			channels: [],
 			sender: sender
-				? { name: sender.name, handle: sender.handle, isBot: sender.isBot }
+				? {
+						name: sender.name,
+						handle: sender.handle,
+						isBot: sender.isBot,
+						timezone: sender.timezone,
+					}
 				: undefined,
 			skills: skillEntries.map((e) => ({
 				skillKey: e.skillKey,

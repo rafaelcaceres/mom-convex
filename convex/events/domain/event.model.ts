@@ -10,7 +10,7 @@ import { SlackBindingModel, WebBindingModel } from "../../threads/domain/thread.
  *  - `immediate` — fire once, now. Exists so an agent can hand work to a fresh
  *    turn (and a fresh context window) instead of doing it inline.
  *  - `one-shot`  — fire once, at `at`.
- *  - `periodic`  — fire on a UTC cron schedule, forever.
+ *  - `periodic`  — fire on a cron schedule, in a named zone, forever.
  *
  * **Why the schedule is a discriminated union and not flat optional fields.**
  * The obvious shape is `type` plus `at?` plus `cron?`, and it is a trap: it
@@ -43,17 +43,30 @@ export const OneShotScheduleModel = v.object({
 });
 
 export const PeriodicScheduleModel = v.object({
-	type: v.literal("periodic"),
 	/**
-	 * Standard 5-field (or 6-field with seconds) cron, interpreted in **UTC**.
+	 * Standard 5-field (or 6-field, with seconds) cron.
 	 *
-	 * No timezone field, deliberately: delivery is owned by `@convex-dev/crons`
-	 * (M4-T03), which is UTC-only — a `timezone` the engine doesn't honour would
-	 * be a lie in the schema, worse than the limitation itself. If zones become a
-	 * requirement, that is an engine change (or an edge-side conversion for
-	 * fixed-time crons), not a field to quietly add here.
+	 * Correction (2026-07-13): an earlier revision dropped `timezone` on the
+	 * belief that `@convex-dev/crons` was UTC-only — that came from its README,
+	 * and the README is wrong. The component's `Schedule` carries `tz?: string`
+	 * and forwards it to `cron-parser`. Zones work; we just weren't asking.
 	 */
+	type: v.literal("periodic"),
 	cron: v.string(),
+	/**
+	 * IANA zone (e.g. `America/Sao_Paulo`). "Daily at 9am" is not an instant
+	 * until you say where.
+	 *
+	 * Optional, and absent means **UTC** — not "the server's zone". That
+	 * distinction is the whole reason this field is documented at length: both
+	 * cron libraries (croner here, cron-parser inside the component) silently
+	 * resolve a *missing* zone against the host's local time. It happens to be
+	 * UTC on Convex today, which means the bug would sleep until the day it
+	 * didn't. So the zone is always passed explicitly downstream — see
+	 * `_libs/schedule.ts` and `parseCron` — and this field being absent is a
+	 * decision ("UTC"), never an omission.
+	 */
+	timezone: v.optional(v.string()),
 });
 
 export const EventScheduleModel = v.union(
@@ -117,26 +130,36 @@ export type Event = Infer<typeof EventModel>;
 
 export const MAX_EVENT_TEXT_CHARS = 2000;
 
+/** The zone a schedule with no explicit zone means. Never the host's. */
+export const DEFAULT_TIMEZONE = "UTC";
+
 /**
- * Parse a cron expression (UTC), or throw. Delivery is owned by
- * `@convex-dev/crons` (M4-T03); `croner` is used here only to *validate* the
- * pattern at the boundary and to derive `nextRunAt` for the UI — both in UTC,
- * matching the engine, so what validates here cannot disagree with what runs
- * there.
+ * Parse a cron expression in a zone, or throw. Delivery is owned by
+ * `@convex-dev/crons`, which resolves the same `(cronspec, tz)` pair with
+ * `cron-parser`; `croner` is used here only to *validate* at the boundary and
+ * to derive `nextRunAt` for display. The two libraries were checked against
+ * each other and agree on every valid case, and both reject an unknown zone —
+ * so what validates here cannot disagree with what fires there.
+ *
+ * The `?? DEFAULT_TIMEZONE` is load-bearing, not defensive: handed `undefined`,
+ * BOTH libraries fall back to the *host's* local zone, not UTC. On Convex the
+ * host is UTC, so an implicit fallback would work right up until the day it
+ * didn't, in a way no test would catch. Always name the zone.
  *
  * Constructed without a handler, so nothing is scheduled as a side effect of
- * asking whether the string is well-formed. The `nextRun()` probe forces lazy
- * parts of croner's resolution to happen now, while there is still a caller to
- * hand the error back to.
+ * asking whether the string is well-formed. The `nextRun()` probe forces the
+ * lazy parts of croner's resolution — the zone above all — to happen now, while
+ * there is still a caller to hand the error back to.
  */
-export function parseCron(cron: string): Cron {
+export function parseCron(cron: string, timezone?: string): Cron {
+	const tz = timezone ?? DEFAULT_TIMEZONE;
 	try {
-		const parsed = new Cron(cron, { timezone: "UTC" });
+		const parsed = new Cron(cron, { timezone: tz });
 		parsed.nextRun();
 		return parsed;
 	} catch (err) {
 		const reason = err instanceof Error ? err.message : String(err);
-		throw new Error(`invalid cron "${cron}": ${reason}`);
+		throw new Error(`invalid cron "${cron}" (${tz}): ${reason}`);
 	}
 }
 
@@ -155,7 +178,7 @@ export function nextRunFor(schedule: EventSchedule, now: number): number | undef
 		case "one-shot":
 			return schedule.at;
 		case "periodic": {
-			const next = parseCron(schedule.cron).nextRun(new Date(now));
+			const next = parseCron(schedule.cron, schedule.timezone).nextRun(new Date(now));
 			return next ? next.getTime() : undefined;
 		}
 	}
@@ -180,8 +203,8 @@ export function assertSchedulable(schedule: EventSchedule, now: number): void {
 			}
 			return;
 		case "periodic": {
-			// Throws on a malformed pattern.
-			parseCron(schedule.cron);
+			// Throws on a malformed pattern or an unknown zone.
+			parseCron(schedule.cron, schedule.timezone);
 			if (nextRunFor(schedule, now) === undefined) {
 				throw new Error(`cron "${schedule.cron}" has no future occurrence`);
 			}

@@ -98,6 +98,7 @@ import type * as skills_impls_sandboxBrowse from "../skills/impls/sandboxBrowse.
 import type * as skills_impls_sandboxRead from "../skills/impls/sandboxRead.js";
 import type * as skills_impls_sandboxWrite from "../skills/impls/sandboxWrite.js";
 import type * as skills_mutations_backfillBaselineSkills from "../skills/mutations/backfillBaselineSkills.js";
+import type * as skills_mutations_resyncCatalog from "../skills/mutations/resyncCatalog.js";
 import type * as skills_mutations_seedCatalog from "../skills/mutations/seedCatalog.js";
 import type * as skills_mutations_toggleSkill from "../skills/mutations/toggleSkill.js";
 import type * as skills_queries_getCatalogByKeyInternal from "../skills/queries/getCatalogByKeyInternal.js";
@@ -248,6 +249,7 @@ declare const fullApi: ApiFromModules<{
   "skills/impls/sandboxRead": typeof skills_impls_sandboxRead;
   "skills/impls/sandboxWrite": typeof skills_impls_sandboxWrite;
   "skills/mutations/backfillBaselineSkills": typeof skills_mutations_backfillBaselineSkills;
+  "skills/mutations/resyncCatalog": typeof skills_mutations_resyncCatalog;
   "skills/mutations/seedCatalog": typeof skills_mutations_seedCatalog;
   "skills/mutations/toggleSkill": typeof skills_mutations_toggleSkill;
   "skills/queries/getCatalogByKeyInternal": typeof skills_queries_getCatalogByKeyInternal;

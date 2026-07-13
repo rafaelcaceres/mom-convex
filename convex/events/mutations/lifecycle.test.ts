@@ -127,7 +127,7 @@ describe("M4-T03 createEvent", () => {
 
 		const cron = await cronOf(t, eventId);
 		expect(cron).not.toBeNull();
-		expect(cron?.schedule).toEqual({ kind: "cron", cronspec: "*/5 * * * *" });
+		expect(cron?.schedule).toEqual({ kind: "cron", cronspec: "*/5 * * * *", tz: "UTC" });
 
 		const row = await eventRow(t, eventId);
 		expect(row?.cronName).toBe(cronNameFor(eventId));
@@ -279,6 +279,7 @@ describe("M4-T03 updateEvent", () => {
 		expect((await cronOf(t, eventId))?.schedule).toEqual({
 			kind: "cron",
 			cronspec: "*/10 * * * *",
+			tz: "UTC",
 		});
 
 		const row = await eventRow(t, eventId);
@@ -299,7 +300,11 @@ describe("M4-T03 updateEvent", () => {
 			schedule: { type: "periodic", cron: "0 18 * * *" },
 		});
 
-		expect((await cronOf(t, eventId))?.schedule).toEqual({ kind: "cron", cronspec: "0 18 * * *" });
+		expect((await cronOf(t, eventId))?.schedule).toEqual({
+			kind: "cron",
+			cronspec: "0 18 * * *",
+			tz: "UTC",
+		});
 	});
 
 	it("text-only edit leaves the scheduling untouched", async () => {

@@ -27,6 +27,12 @@ export const SenderProfileModel = v.object({
 	handle: v.optional(v.string()),
 	platform: v.union(v.literal("slack"), v.literal("web")),
 	isBot: v.optional(v.boolean()),
+	/**
+	 * The sender's IANA zone, when we know it (Slack tells us; web doesn't yet).
+	 * Reaches the model through the `## Current Time` block so "todo dia às 9h"
+	 * becomes a cron in *their* morning rather than in UTC's.
+	 */
+	timezone: v.optional(v.string()),
 });
 
 export type SenderProfile = Infer<typeof SenderProfileModel>;
@@ -59,6 +65,7 @@ const resolveSenderInternal = internalQuery({
 				handle: m.username,
 				platform: "slack",
 				isBot: m.isBot,
+				timezone: m.tz,
 			};
 		}
 

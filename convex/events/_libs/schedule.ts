@@ -2,7 +2,7 @@ import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { EventRepository } from "../adapters/event.repository";
-import type { EventAgg } from "../domain/event.model";
+import { DEFAULT_TIMEZONE, type EventAgg } from "../domain/event.model";
 import { crons } from "./cronsClient";
 
 /**
@@ -59,7 +59,16 @@ export async function scheduleEvent(ctx: MutationCtx, agg: EventAgg): Promise<vo
 			const name = cronNameFor(event._id);
 			await crons.register(
 				ctx,
-				{ kind: "cron", cronspec: event.schedule.cron },
+				{
+					kind: "cron",
+					cronspec: event.schedule.cron,
+					// Always named, never left undefined: handed no `tz`, the
+					// component's `cron-parser` resolves against the HOST's local zone,
+					// not UTC. That is UTC on Convex today — which is exactly what makes
+					// the implicit version dangerous, since it would keep working until
+					// it silently didn't. `DEFAULT_TIMEZONE` states the intent.
+					tz: event.schedule.timezone ?? DEFAULT_TIMEZONE,
+				},
 				internal.events.mutations.fireInternal.default,
 				{ eventId: event._id },
 				name,

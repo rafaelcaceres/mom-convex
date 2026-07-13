@@ -60,8 +60,14 @@ const createFromAgentInternal = internalMutation({
 		text: v.string(),
 		/** Epoch ms for a one-shot. Exactly one of `at` / `cron`. */
 		at: v.optional(v.number()),
-		/** 5-or-6-field cron, UTC, for a periodic. */
+		/** 5-or-6-field cron for a periodic. */
 		cron: v.optional(v.string()),
+		/**
+		 * IANA zone for `cron`. Absent ⇒ UTC. Meaningless for `at`, which is
+		 * already an absolute instant — accepted-and-ignored there rather than
+		 * rejected, because a model that sends both is confused, not malicious.
+		 */
+		timezone: v.optional(v.string()),
 	},
 	returns: v.object({
 		eventId: v.id("events"),
@@ -87,7 +93,7 @@ const createFromAgentInternal = internalMutation({
 			args.at !== undefined
 				? { type: "one-shot", at: args.at }
 				: // biome-ignore lint/style/noNonNullAssertion: exactly-one guard above
-					{ type: "periodic", cron: args.cron! };
+					{ type: "periodic", cron: args.cron!, timezone: args.timezone };
 		assertSchedulable(schedule, now);
 
 		const agg = await EventRepository.create(ctx, {

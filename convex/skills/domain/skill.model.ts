@@ -66,4 +66,37 @@ export class SkillCatalogAgg implements IAggregate<SkillCatalog> {
 	requiresConfirmation(): boolean {
 		return this.skill.requiresConfirmation ?? this.skill.sideEffect === "write";
 	}
+
+	/**
+	 * Adopt the current built-in definition of this skill (F-01).
+	 *
+	 * `enabled` is deliberately NOT overwritten: it is the one field an admin
+	 * owns, and a resync that silently re-enabled a skill someone turned off
+	 * would be a security regression wearing the costume of a bugfix.
+	 *
+	 * Everything else — name, description, schema, side effect, confirmation
+	 * policy — belongs to the code, and a row that disagrees with the code is a
+	 * lie the model is being told. This is the failure F-01 was filed for: change
+	 * a skill's zod schema, forget the catalog, and the model keeps calling the
+	 * tool with the old arguments while nothing anywhere reports a problem.
+	 */
+	adoptDefinition(def: NewSkillCatalog): boolean {
+		const s = this.skill;
+		const changed =
+			s.name !== def.name ||
+			s.description !== def.description ||
+			s.zodSchemaJson !== def.zodSchemaJson ||
+			s.sideEffect !== def.sideEffect ||
+			s.requiresConfirmation !== def.requiresConfirmation ||
+			s.requiredCredType !== def.requiredCredType;
+		if (!changed) return false;
+
+		s.name = def.name;
+		s.description = def.description;
+		s.zodSchemaJson = def.zodSchemaJson;
+		s.sideEffect = def.sideEffect;
+		s.requiresConfirmation = def.requiresConfirmation;
+		s.requiredCredType = def.requiredCredType;
+		return true;
+	}
 }

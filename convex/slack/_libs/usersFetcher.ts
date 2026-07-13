@@ -19,6 +19,8 @@ export interface FetchedUser {
 	username: string;
 	displayName: string;
 	isBot: boolean;
+	/** IANA zone from Slack. Powers timezone-correct scheduling (F-10 follow-up). */
+	tz?: string;
 }
 
 export type UsersFetchPageFn = (args: { cursor?: string }) => Promise<UsersListResult>;
@@ -34,6 +36,7 @@ export function mapMember(m: SlackUserListMember): FetchedUser {
 		username: m.name,
 		displayName: display && display.length > 0 ? display : (real ?? m.name),
 		isBot: m.is_bot ?? false,
+		tz: m.tz,
 	};
 }
 

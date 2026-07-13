@@ -51,6 +51,7 @@ const eventCreateArgs = z
 			.max(60 * 24 * 366)
 			.optional(),
 		cron: z.string().optional(),
+		timezone: z.string().optional(),
 	})
 	// The exactly-one rule is not representable in JSON Schema (the model sees
 	// three optionals); the tool description carries it and the impl enforces it.
@@ -117,7 +118,7 @@ export const BUILT_IN_SKILLS: readonly NewSkillCatalog[] = [
 		key: "event.create",
 		name: "Schedule Event",
 		description:
-			"Schedule yourself to act later, in THIS conversation: a reminder, a follow-up, a recurring check. Provide exactly ONE of: `afterMinutes` (relative — prefer this for 'in an hour' style asks), `at` (ISO 8601 UTC, e.g. 2026-07-14T09:00:00Z), or `cron` (5-field, UTC) for recurring. All times are UTC. `text` is the instruction your future self will receive.",
+			"Schedule yourself to act later, in THIS conversation: a reminder, a follow-up, a recurring check. Provide exactly ONE of: `afterMinutes` (relative — prefer this for 'in an hour' style asks), `at` (absolute; ISO 8601 that MUST end in Z, i.e. UTC — convert from the user's local time using the Current Time section), or `cron` (5-field, recurring). With `cron`, also pass `timezone` (IANA, e.g. America/Sao_Paulo) — a cron without it runs in UTC, which is not the user's morning. `text` is the instruction your future self will receive.",
 		zodSchemaJson: zodToJsonSchemaString(eventCreateArgs),
 		// Writes a reversible, tenant-scoped row that `event.cancel` (or the
 		// dashboard) can withdraw — but each fire spends a real agent turn, so if
@@ -182,6 +183,12 @@ export const BUILT_IN_SKILLS: readonly NewSkillCatalog[] = [
 /**
  * Idempotent catalog seed. Inserts any missing built-in, leaves existing
  * rows untouched. Safe to re-run after adding a new `BUILT_IN_SKILLS` entry.
+ *
+ * Insert-only, on purpose: this runs from a trigger path where quietly
+ * rewriting rows would be surprising. When a built-in's *definition* changes
+ * (schema, description), that is `resyncSkillCatalog` below — the two are
+ * separate because "make sure it exists" and "make sure it is current" fail
+ * differently and deserve to be called deliberately.
  */
 export async function seedSkillCatalog(ctx: MutationCtx): Promise<SkillCatalogAgg[]> {
 	const results: SkillCatalogAgg[] = [];
@@ -195,4 +202,42 @@ export async function seedSkillCatalog(ctx: MutationCtx): Promise<SkillCatalogAg
 		results.push(created);
 	}
 	return results;
+}
+
+/**
+ * Bring every catalog row back in line with the code (F-01).
+ *
+ * The bug this exists for: change a skill's zod schema — say, add `timezone` to
+ * `event.create` — deploy, and the catalog still serves the *old* JSON schema to
+ * the model. The tool then advertises arguments it no longer takes, or hides the
+ * one that fixes the bug you just shipped, and nothing anywhere errors. The
+ * drift is silent, which is what makes it expensive.
+ *
+ * Inserts what is missing, updates what has drifted, and preserves `enabled`
+ * (see `adoptDefinition`). Reports what it touched so a deploy log says whether
+ * anything actually changed.
+ */
+export async function resyncSkillCatalog(
+	ctx: MutationCtx,
+): Promise<{ inserted: string[]; updated: string[]; unchanged: string[] }> {
+	const inserted: string[] = [];
+	const updated: string[] = [];
+	const unchanged: string[] = [];
+
+	for (const skill of BUILT_IN_SKILLS) {
+		const existing = await SkillCatalogRepository.getByKey(ctx, { key: skill.key });
+		if (!existing) {
+			await SkillCatalogRepository.create(ctx, skill);
+			inserted.push(skill.key);
+			continue;
+		}
+		if (existing.adoptDefinition(skill)) {
+			await SkillCatalogRepository.save(ctx, existing);
+			updated.push(skill.key);
+		} else {
+			unchanged.push(skill.key);
+		}
+	}
+
+	return { inserted, updated, unchanged };
 }

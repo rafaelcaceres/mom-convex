@@ -103,6 +103,7 @@ type CreateResult = {
 	created: true;
 	eventId: Id<"events">;
 	scheduleType: string;
+	timezone?: string;
 	nextRunAt?: string;
 };
 
@@ -150,7 +151,7 @@ describe("F-10 event.create", () => {
 		expect(event?.schedule).toEqual({ type: "one-shot", at: Date.parse(at) });
 	});
 
-	it("cron: registers a periodic in the crons component", async () => {
+	it("cron: registers a periodic in the crons component, with UTC named explicitly", async () => {
 		const t = newTest();
 		const { orgId, agentId } = await setup(t);
 		const scope = { orgId, agentId, ...(await slackThread(t, { orgId, agentId })) };
@@ -162,7 +163,53 @@ describe("F-10 event.create", () => {
 
 		expect(result.scheduleType).toBe("periodic");
 		const registered = await t.run((ctx) => crons.get(ctx, { name: cronNameFor(result.eventId) }));
-		expect(registered?.schedule).toEqual({ kind: "cron", cronspec: "*/5 * * * *" });
+		// `tz` present even with no timezone asked for: handed `undefined`, the
+		// component's cron-parser would resolve against the HOST's zone, not UTC.
+		expect(registered?.schedule).toEqual({ kind: "cron", cronspec: "*/5 * * * *", tz: "UTC" });
+	});
+
+	it("cron + timezone: the zone reaches the component, and 9am means the user's 9am", async () => {
+		const t = newTest();
+		const { orgId, agentId } = await setup(t);
+		const scope = { orgId, agentId, ...(await slackThread(t, { orgId, agentId })) };
+
+		const result = await invokeOk<CreateResult>(t, "event.create", scope, {
+			text: "bom dia, time",
+			cron: "0 9 * * *",
+			timezone: "America/Sao_Paulo",
+		});
+
+		const registered = await t.run((ctx) => crons.get(ctx, { name: cronNameFor(result.eventId) }));
+		expect(registered?.schedule).toEqual({
+			kind: "cron",
+			cronspec: "0 9 * * *",
+			tz: "America/Sao_Paulo",
+		});
+
+		// And it is stored, so a later reschedule/edit keeps the zone.
+		const event = await t.run((ctx) => ctx.db.get(result.eventId));
+		expect(event?.schedule).toEqual({
+			type: "periodic",
+			cron: "0 9 * * *",
+			timezone: "America/Sao_Paulo",
+		});
+		// NOW is 2026-07-14T12:00:00Z = 09:00 in São Paulo, so the next 9am-SP is
+		// tomorrow at 12:00Z — NOT tomorrow at 09:00Z, which is what UTC would give.
+		expect(result.nextRunAt).toBe("2026-07-15T12:00:00.000Z");
+		expect(result.timezone).toBe("America/Sao_Paulo");
+	});
+
+	it("rejects an unknown timezone instead of scheduling into the void", async () => {
+		const t = newTest();
+		const { orgId, agentId } = await setup(t);
+		const scope = { orgId, agentId, ...(await slackThread(t, { orgId, agentId })) };
+
+		const raw = await invokeSkill(t, "event.create", scope, {
+			text: "x",
+			cron: "0 9 * * *",
+			timezone: "Mars/Olympus",
+		});
+		expect(raw.isError).toBe(true);
 	});
 
 	it("web thread: target derives to the user's own web binding", async () => {

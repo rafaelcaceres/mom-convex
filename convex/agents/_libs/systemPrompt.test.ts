@@ -124,10 +124,60 @@ describe("M2-T09 buildSystemPrompt", () => {
 		});
 
 		expect(prompt).toContain("## Current Time");
-		// Weekday + ISO + explicit UTC label: "remind me Friday" needs the weekday
-		// (ISO doesn't carry it), and event scheduling interprets everything in UTC.
-		expect(prompt).toContain("Tuesday, 2026-07-14T12:00:00.000Z (UTC)");
-		expect(prompt).toContain("interpreted in UTC");
+		// Weekday + ISO: "remind me Friday" needs the weekday, which ISO omits.
+		expect(prompt).toContain("UTC: Tuesday, 2026-07-14T12:00:00.000Z");
+	});
+
+	it("with no known timezone, says so and tells the model to confirm", () => {
+		const prompt = buildSystemPrompt({
+			agent: { name: "a", systemPrompt: "base" },
+			memories: [],
+			users: [],
+			channels: [],
+			skills: [],
+			now: Date.parse("2026-07-14T12:00:00Z"),
+			sender: { name: "Alice" },
+		});
+
+		// Wrong-but-honest over wrong-and-confident: the model should ask rather
+		// than silently file "9am" three hours off.
+		expect(prompt).toContain("timezone is unknown");
+		expect(prompt).toContain("confirm which timezone");
+	});
+
+	it("shows the sender's local clock and names their zone — the anti-3-hours-off block", () => {
+		const prompt = buildSystemPrompt({
+			agent: { name: "a", systemPrompt: "base" },
+			memories: [],
+			users: [],
+			channels: [],
+			skills: [],
+			now: Date.parse("2026-07-14T12:00:00Z"),
+			sender: { name: "Rafa", timezone: "America/Sao_Paulo" },
+		});
+
+		// 12:00Z is 09:00 in São Paulo. Both clocks are present because the model
+		// reasons in the user's, but must SEND UTC (or a cron plus the zone).
+		expect(prompt).toContain("UTC: Tuesday, 2026-07-14T12:00:00.000Z");
+		expect(prompt).toContain("User's local time: Tuesday, 2026-07-14T09:00:00 (America/Sao_Paulo)");
+		// And the instruction that turns knowing the zone into passing it.
+		expect(prompt).toContain('timezone: "America/Sao_Paulo"');
+		expect(prompt).toContain("A cron without a timezone means UTC");
+	});
+
+	it("an unparseable zone from the directory degrades instead of failing the turn", () => {
+		const prompt = buildSystemPrompt({
+			agent: { name: "a", systemPrompt: "base" },
+			memories: [],
+			users: [],
+			channels: [],
+			skills: [],
+			now: Date.parse("2026-07-14T12:00:00Z"),
+			sender: { name: "Ghost", timezone: "Mars/Olympus" },
+		});
+
+		expect(prompt).toContain("timezone is unknown");
+		expect(prompt).not.toContain("Mars/Olympus");
 	});
 
 	it("omits the clock when `now` is absent (legacy callers)", () => {

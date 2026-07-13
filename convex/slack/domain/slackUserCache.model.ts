@@ -20,6 +20,18 @@ export const NewSlackUserCacheModel = v.object({
 	username: v.string(),
 	displayName: v.string(),
 	isBot: v.boolean(),
+	/**
+	 * The member's IANA zone, straight from `users.list` (`tz`). Feeds the
+	 * `## Current Time` block so the agent can turn "todo dia às 9h" into a cron
+	 * in the zone the person actually lives in — without it, "9am" silently means
+	 * 9am UTC, which is 6am in São Paulo (F-10 follow-up).
+	 *
+	 * Optional because rows cached before this field existed have none; the daily
+	 * `syncAllInstallUsers` cron refills them. Absent ⇒ the prompt omits local
+	 * time and the agent falls back to UTC, which is wrong-but-honest rather than
+	 * wrong-and-confident.
+	 */
+	tz: v.optional(v.string()),
 	fetchedAt: v.number(),
 });
 
