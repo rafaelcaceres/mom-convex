@@ -7,6 +7,25 @@ on:
     branches: [main]
 
 jobs:
+  # Cross-tenant isolation (M3-T05). Runs as its own job — `pnpm test` already
+  # covers it, but a leak between customers must not surface as one red line in a
+  # wall of unit tests. If this job is red, the merge does not happen: see the
+  # playbook in README.md ("Cross-tenant isolation gate").
+  isolation:
+    name: 🔒 Cross-tenant isolation gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:isolation
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

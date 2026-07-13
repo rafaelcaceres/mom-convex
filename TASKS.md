@@ -11,16 +11,16 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 ## Status
 
-- **Current milestone:** M3 — RAG + integrações reais
+- **Current milestone:** M4 — Eventos + Multi-agente + Observability
 - **Last updated:** 2026-07-12
-- **Overall:** 43 / 63 (2 cortadas após revisão: M3-T01, M3-T03)
+- **Overall:** 45 / 54 (2 cortadas: M3-T01, M3-T03 · 9 adiadas pro backlog: M3-T06…M3-T14)
 
 | Milestone | Done | Total |
 |---|---|---|
 | M0 — Setup & infra | 7 | 7 |
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
 | M2 — Agente real + Vercel Sandbox | 20 | 20 |
-| M3 — RAG + integrações reais | 1 | 12 |
+| M3 — RAG (integrações adiadas) | 3 | 3 |
 | M4 — Eventos + Multi-agente + Observability | 0 | 9 |
 
 ## M0 — Setup & infra
@@ -80,24 +80,17 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 **M2 done gate:** agent roda FizzBuzz em Python no sandbox; costLedger populado; UIs de edit/detail usáveis.
 
-## M3 — RAG + integrações reais
+## M3 — RAG (integrações adiadas)
 
 - [~] ~~[M3-T01](tasks/m3-rag-integrations/M3-T01-rag-component.md) — @convex-dev/rag + namespace~~ **CUT** — use `vectorIndex` nativo do Convex na tabela `memory` (M2-T07). Ver nota `2026-04-18 revisão RAG`.
 - [x] [M3-T02](tasks/m3-rag-integrations/M3-T02-memory-rag-trigger.md) — Memory → embedding trigger (via `embedMany` do componente `agent`)
 - [~] ~~[M3-T03](tasks/m3-rag-integrations/M3-T03-messages-indexation.md) — Messages indexation~~ **CUT** — `@convex-dev/agent` já indexa messages automaticamente; busca via `fetchContextMessages`.
-- [ ] [M3-T04](tasks/m3-rag-integrations/M3-T04-real-memory-search.md) — Memory semantic search (vectorIndex nativo + orgId filter)
-- [ ] [M3-T05](tasks/m3-rag-integrations/M3-T05-rag-isolation-test.md) — **Cross-tenant isolation gate** (filtro por orgId)
-- [ ] [M3-T06](tasks/m3-rag-integrations/M3-T06-domain-credentials.md) — Domain `credentials` + refresh schema
-- [ ] [M3-T07](tasks/m3-rag-integrations/M3-T07-gmail-oauth.md) — Gmail OAuth flow
-- [ ] [M3-T08](tasks/m3-rag-integrations/M3-T08-notion-oauth.md) — Notion OAuth flow
-- [ ] [M3-T09](tasks/m3-rag-integrations/M3-T09-skills-gmail.md) — Skills gmail.search + send_draft
-- [ ] [M3-T10](tasks/m3-rag-integrations/M3-T10-skill-notion-search.md) — Skill notion.search
-- [ ] [M3-T11](tasks/m3-rag-integrations/M3-T11-human-in-loop.md) — Human-in-loop confirmation
-- [ ] [M3-T12](tasks/m3-rag-integrations/M3-T12-credential-refresh.md) — Credential refresh interceptor
-- [ ] [M3-T13](tasks/m3-rag-integrations/M3-T13-ui-credentials.md) — UI credentials tab
-- [ ] [M3-T14](tasks/m3-rag-integrations/M3-T14-smoke-m3.md) — **Smoke M3**
+- [x] [M3-T04](tasks/m3-rag-integrations/M3-T04-real-memory-search.md) — Memory semantic search (vectorIndex nativo + orgId filter)
+- [x] [M3-T05](tasks/m3-rag-integrations/M3-T05-rag-isolation-test.md) — **Cross-tenant isolation gate** — `test/smoke/rag-isolation.test.ts`, job próprio no CI, playbook no README
 
-**M3 done gate:** Gmail/Notion conectados; draft requer aprovação; isolation test verde (bloqueia merge se falhar).
+**Decisão 2026-07-12 — integrações adiadas.** M3-T06…M3-T14 (credentials, Gmail, Notion, human-in-loop, UI de credenciais, smoke M3) saíram da contagem do milestone e viraram backlog: dependem de criar apps OAuth no Google e no Notion, e a prioridade passou pra M4 (eventos + multi-agente + observability), que fecha o produto pro primeiro design partner. As specs seguem em `tasks/m3-rag-integrations/` — nada foi apagado. Ver "Integrações adiadas" no backlog.
+
+**M3 done gate (revisado):** memory semantic search funcionando com filtro por org; isolation gate verde (bloqueia merge se falhar).
 
 ## M4 — Eventos + Multi-agente + Observability
 
@@ -114,6 +107,22 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 **M4 done gate:** cron periódico dispara em produção; multi-agent route por canal; rate limit ativa; dashboard coerente.
 
 ## Follow-ups / backlog (fora da contagem de milestone)
+
+### Integrações adiadas (ex-M3, decisão 2026-07-12)
+
+Tiradas da contagem do milestone pra destravar a M4, **não canceladas** — as specs continuam em `tasks/m3-rag-integrations/`. Todas dependem de criar apps OAuth (Google Cloud + Notion), que é trabalho de configuração externa, não de código. A ordem entre elas continua valendo: `credentials` é base de tudo, `human-in-loop` é pré-requisito de qualquer skill de escrita (mandar e-mail).
+
+- [ ] [M3-T06](tasks/m3-rag-integrations/M3-T06-domain-credentials.md) — Domain `credentials` + refresh schema
+- [ ] [M3-T07](tasks/m3-rag-integrations/M3-T07-gmail-oauth.md) — Gmail OAuth flow
+- [ ] [M3-T08](tasks/m3-rag-integrations/M3-T08-notion-oauth.md) — Notion OAuth flow
+- [ ] [M3-T09](tasks/m3-rag-integrations/M3-T09-skills-gmail.md) — Skills gmail.search + send_draft
+- [ ] [M3-T10](tasks/m3-rag-integrations/M3-T10-skill-notion-search.md) — Skill notion.search
+- [ ] [M3-T11](tasks/m3-rag-integrations/M3-T11-human-in-loop.md) — **Human-in-loop confirmation** — o dispatcher já tem o gate (`requiresConfirmation`, F-08) mas hoje só sabe barrar; falta a UI de aprovação. Bloqueia qualquer skill que escreva pra fora (Gmail send).
+- [ ] [M3-T12](tasks/m3-rag-integrations/M3-T12-credential-refresh.md) — Credential refresh interceptor
+- [ ] [M3-T13](tasks/m3-rag-integrations/M3-T13-ui-credentials.md) — UI credentials tab
+- [ ] [M3-T14](tasks/m3-rag-integrations/M3-T14-smoke-m3.md) — Smoke M3
+
+### Outros
 
 - [ ] [F-01](tasks/followups/F-01-catalog-sync-utility.md) — Catalog sync utility (`resyncSkillCatalog`) — surfaced por M2-T08 quando o zod schema de `memory.search` mudou e o `skillCatalog` ficou stale silenciosamente.
 - [x] [F-02](tasks/followups/F-02-chat-inline-tool-calls.md) — Chat com tool calls colapsáveis inline — entregue: `MessageList` itera `message.parts` e renderiza `ToolCallCard` inline; `UsagePanel` é header do `/chat`; `listUIMessages` (via `useUIMessages`) substituiu o `listThreadEvents` planejado.

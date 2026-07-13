@@ -29,7 +29,36 @@ pnpm dev
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm test` | Vitest (unit + convex-test) |
 | `pnpm test:smoke` | Smoke suites per milestone |
+| `pnpm test:isolation` | Cross-tenant isolation gate (see below) |
 | `pnpm test:e2e` | Playwright end-to-end |
+
+## Cross-tenant isolation gate
+
+`test/smoke/rag-isolation.test.ts` is the one suite in this repo that is not
+about correctness but about containment: it asserts that no org can retrieve
+another org's memories or messages. It runs in CI as its own job
+(`🔒 Cross-tenant isolation gate`).
+
+**If it is red, do not merge — not even "just to unblock the branch".** A failure
+here means retrieval is capable of handing one customer another customer's
+private text through the model. Treat it as an incident, not a flaky test:
+
+1. Do not "fix" the test to make it pass. The test asserts row ownership by
+   reading `orgId` back off the stored document — if it says a row leaked, a row
+   leaked.
+2. Find which of the four defenses broke. In order of the request path:
+   the `orgId` filter on `ctx.vectorSearch` (`convex/memory/actions/search.ts`),
+   the tenant re-check during hydration (`MemoryRepository.listVisibleByIds`),
+   the scope closed over at toolset-build time (`buildToolSet`), and the
+   `agentThreadId` that confines history search to its own thread.
+3. Get a second pair of eyes before merging the fix.
+
+The suite is deliberately redundant with `memorySearch.test.ts`: that one pins
+that retrieval *works*, this one pins that it cannot *leak*. Layers 1 and 2 are
+each independently sufficient — removing either alone keeps the gate green — so
+the gate is verified by removing **both**, which turns it red on 7 of 8 tests.
+Keep it that way: if a refactor ever leaves only one layer standing, the gate
+still passes and you have silently spent your safety margin.
 
 ## Environment
 
