@@ -5,6 +5,14 @@ import type { ISlackInstallRepository } from "../domain/slackInstall.repository"
 export const SlackInstallRepository: ISlackInstallRepository = {
 	...createRepository("slackInstalls", (doc) => new SlackInstallAgg(doc)),
 
+	getByIdString: async (ctx, id) => {
+		const normalized = ctx.db.normalizeId("slackInstalls", id);
+		if (!normalized) return null;
+		const doc = await ctx.db.get(normalized);
+		if (!doc) return null;
+		return new SlackInstallAgg(doc);
+	},
+
 	getByTeamId: async (ctx, { teamId }) => {
 		const doc = await ctx.db
 			.query("slackInstalls")

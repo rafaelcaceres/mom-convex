@@ -8,6 +8,17 @@ export interface ISlackInstallRepository extends IRepository<"slackInstalls", Sl
 		clause: { teamId: SlackInstall["teamId"] },
 	): Promise<SlackInstallAgg | null>;
 
+	/**
+	 * Resolve an install from an *untyped* id string, or null.
+	 *
+	 * Bindings store `installId` as `v.string()` (threads travel across domains),
+	 * so by the time events (M4-T02) need to ask "does this install still exist?"
+	 * the id has lost its type. `ctx.db.get` throws on a malformed id rather than
+	 * returning null — this normalizes first, so a stale or garbage string is an
+	 * honest "no install", not a crash inside a scheduled function.
+	 */
+	getByIdString(ctx: QueryCtx, id: string): Promise<SlackInstallAgg | null>;
+
 	listByOrg(ctx: QueryCtx, clause: { orgId: SlackInstall["orgId"] }): Promise<SlackInstallAgg[]>;
 
 	/**

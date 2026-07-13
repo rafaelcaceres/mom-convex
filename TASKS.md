@@ -13,7 +13,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 
 - **Current milestone:** M4 — Eventos + Multi-agente + Observability
 - **Last updated:** 2026-07-13
-- **Overall:** 46 / 54 (2 cortadas: M3-T01, M3-T03 · 9 adiadas pro backlog: M3-T06…M3-T14)
+- **Overall:** 47 / 54 (2 cortadas: M3-T01, M3-T03 · 9 adiadas pro backlog: M3-T06…M3-T14)
 
 | Milestone | Done | Total |
 |---|---|---|
@@ -21,7 +21,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 | M1 — Foundation (Slack + Web echo) | 15 | 15 |
 | M2 — Agente real + Vercel Sandbox | 20 | 20 |
 | M3 — RAG (integrações adiadas) | 3 | 3 |
-| M4 — Eventos + Multi-agente + Observability | 1 | 9 |
+| M4 — Eventos + Multi-agente + Observability | 2 | 9 |
 
 ## M0 — Setup & infra
 
@@ -95,7 +95,7 @@ Dashboard de progresso. Detalhes de cada task em [tasks/](tasks/README.md).
 ## M4 — Eventos + Multi-agente + Observability
 
 - [x] [M4-T01](tasks/m4-events-observability/M4-T01-domain-events.md) — Domain `events` (Immediate/OneShot/Periodic) — schedule como união discriminada; **sem `timezone`** (cron é UTC, ver nota `2026-07-13 engine de eventos`)
-- [ ] [M4-T02](tasks/m4-events-observability/M4-T02-events-fire-action.md) — `internal.events.fire` action
+- [x] [M4-T02](tasks/m4-events-observability/M4-T02-events-fire-action.md) — `events.fireInternal` — **mutation** (não action): fire atômico; status re-check mata a corrida cancel×in-flight
 - [ ] [M4-T03](tasks/m4-events-observability/M4-T03-event-scheduling.md) — Event scheduling lifecycle
 - [ ] [M4-T04](tasks/m4-events-observability/M4-T04-ui-events-crud.md) — UI events CRUD
 - [ ] [M4-T05](tasks/m4-events-observability/M4-T05-multi-agent-routing.md) — Multi-agent routing per channel

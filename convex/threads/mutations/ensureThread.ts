@@ -1,9 +1,8 @@
 import { v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
-import { createAgentThread } from "../../agents/adapters/threadBridge";
 import { internalMutation } from "../../customFunctions";
-import { ThreadRepository } from "../adapters/thread.repository";
-import { AdapterBindingModel, bindingKey } from "../domain/thread.model";
+import { ensureThread } from "../_libs/ensureThread";
+import { AdapterBindingModel } from "../domain/thread.model";
 
 /**
  * Idempotent thread resolver. Given `{orgId, agentId, binding}`, return the
@@ -14,34 +13,19 @@ import { AdapterBindingModel, bindingKey } from "../domain/thread.model";
  * Internal-only by design — platform adapters (slack inbound, webChat) are
  * the sole callers. They resolve org+agent from their own context and
  * forward the binding shape verbatim.
+ *
+ * Thin shell over `_libs/ensureThread` — the logic lives there so mutations
+ * (which cannot `ctx.runMutation` one another) can call it in-transaction;
+ * `events.fireInternal` (M4-T02) does exactly that.
  */
-const ensureThread = internalMutation({
+const ensureThreadMutation = internalMutation({
 	args: {
 		orgId: v.string(),
 		agentId: v.id("agents"),
 		binding: AdapterBindingModel,
 	},
 	returns: v.id("threads"),
-	handler: async (ctx, args): Promise<Id<"threads">> => {
-		const key = bindingKey(args.binding);
-		const existing = await ThreadRepository.getByOrgBinding(ctx, {
-			orgId: args.orgId,
-			bindingKey: key,
-		});
-		if (existing) return existing.getModel()._id;
-
-		const userId = args.binding.type === "web" ? args.binding.userId : undefined;
-		const agentThreadId = await createAgentThread(ctx, { userId });
-
-		const agg = await ThreadRepository.create(ctx, {
-			orgId: args.orgId,
-			agentId: args.agentId,
-			agentThreadId,
-			binding: args.binding,
-			bindingKey: key,
-		});
-		return agg.getModel()._id;
-	},
+	handler: async (ctx, args): Promise<Id<"threads">> => ensureThread(ctx, args),
 });
 
-export default ensureThread;
+export default ensureThreadMutation;
