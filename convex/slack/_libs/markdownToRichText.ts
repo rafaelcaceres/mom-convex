@@ -288,7 +288,10 @@ function flattenList(
 	flush();
 }
 
-function flattenBlockquote(node: Blockquote, opts: MarkdownToRichTextOptions): SlackSectionElement[] {
+function flattenBlockquote(
+	node: Blockquote,
+	opts: MarkdownToRichTextOptions,
+): SlackSectionElement[] {
 	const out: SlackSectionElement[] = [];
 	for (const child of node.children) {
 		if (child.type === "paragraph") {
@@ -363,12 +366,7 @@ function mergeAdjacentText(elements: SlackSectionElement[]): SlackSectionElement
 	const out: SlackSectionElement[] = [];
 	for (const el of elements) {
 		const prev = out[out.length - 1];
-		if (
-			prev &&
-			prev.type === "text" &&
-			el.type === "text" &&
-			styleEq(prev.style, el.style)
-		) {
+		if (prev && prev.type === "text" && el.type === "text" && styleEq(prev.style, el.style)) {
 			out[out.length - 1] = { ...prev, text: prev.text + el.text };
 		} else {
 			out.push(el);

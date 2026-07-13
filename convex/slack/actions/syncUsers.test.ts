@@ -142,8 +142,8 @@ describe("slack syncUsers action", () => {
 				HttpResponse.json({ ok: false, error: "missing_scope" }),
 			),
 		);
-		await expect(
-			t.action(internal.slack.actions.syncUsers.default, { installId }),
-		).rejects.toThrow(/users_list_failed/);
+		await expect(t.action(internal.slack.actions.syncUsers.default, { installId })).rejects.toThrow(
+			/users_list_failed/,
+		);
 	});
 });

@@ -1,9 +1,5 @@
 import { ConvexError } from "convex/values";
-import {
-	type SlackUserListMember,
-	type UsersListResult,
-	usersList,
-} from "./slackClient";
+import { type SlackUserListMember, type UsersListResult, usersList } from "./slackClient";
 
 /**
  * Pure orchestration of `users.list` pagination. Walks `next_cursor` until
@@ -25,9 +21,7 @@ export interface FetchedUser {
 	isBot: boolean;
 }
 
-export interface UsersFetchPageFn {
-	(args: { cursor?: string }): Promise<UsersListResult>;
-}
+export type UsersFetchPageFn = (args: { cursor?: string }) => Promise<UsersListResult>;
 
 const DEFAULT_PAGE_LIMIT = 200;
 const DEFAULT_MAX_PAGES = 50;

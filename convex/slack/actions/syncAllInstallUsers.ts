@@ -15,10 +15,7 @@ const syncAllInstallUsers = internalAction({
 	args: {},
 	returns: v.object({ scheduled: v.number() }),
 	handler: async (ctx): Promise<{ scheduled: number }> => {
-		const installs = await ctx.runQuery(
-			internal.slack.queries.listAllInstallIds.default,
-			{},
-		);
+		const installs = await ctx.runQuery(internal.slack.queries.listAllInstallIds.default, {});
 		for (const install of installs) {
 			await ctx.scheduler.runAfter(0, internal.slack.actions.syncUsers.default, {
 				installId: install._id,

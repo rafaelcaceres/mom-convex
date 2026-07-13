@@ -26,10 +26,9 @@ const handleIncomingEvent = internalAction({
 		});
 		if (!install) return null;
 
-		const cachedUsers = await ctx.runQuery(
-			internal.slack.queries.getUsersByTeam.default,
-			{ teamId: install.teamId },
-		);
+		const cachedUsers = await ctx.runQuery(internal.slack.queries.getUsersByTeam.default, {
+			teamId: install.teamId,
+		});
 		const userCache: SlackUserCache = new Map(
 			cachedUsers.map((u) => [
 				u.userId,

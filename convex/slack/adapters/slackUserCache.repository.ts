@@ -25,9 +25,7 @@ export const SlackUserCacheRepository: ISlackUserCacheRepository = {
 	upsertByTeamUser: async (ctx, data) => {
 		const existing = await ctx.db
 			.query("slackUserCache")
-			.withIndex("by_team_user", (q) =>
-				q.eq("teamId", data.teamId).eq("userId", data.userId),
-			)
+			.withIndex("by_team_user", (q) => q.eq("teamId", data.teamId).eq("userId", data.userId))
 			.unique();
 		if (existing) {
 			await ctx.db.replace(existing._id, data);

@@ -51,8 +51,7 @@ describe("usersFetcher", () => {
 	});
 
 	it("throws ConvexError when Slack returns ok=false", async () => {
-		const fetchPage = async () =>
-			({ ok: false, error: "missing_scope" }) satisfies UsersListResult;
+		const fetchPage = async () => ({ ok: false, error: "missing_scope" }) satisfies UsersListResult;
 		await expect(fetchAllUsers({ fetchPage })).rejects.toBeInstanceOf(ConvexError);
 	});
 

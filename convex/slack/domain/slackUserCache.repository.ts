@@ -1,10 +1,6 @@
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import type { IRepository } from "../../_shared/_libs/repository";
-import type {
-	NewSlackUserCache,
-	SlackUserCache,
-	SlackUserCacheAgg,
-} from "./slackUserCache.model";
+import type { NewSlackUserCache, SlackUserCache, SlackUserCacheAgg } from "./slackUserCache.model";
 
 export interface ISlackUserCacheRepository
 	extends IRepository<"slackUserCache", SlackUserCacheAgg> {

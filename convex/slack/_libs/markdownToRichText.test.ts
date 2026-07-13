@@ -87,7 +87,9 @@ describe("markdownToRichText", () => {
 	it("renders nested lists with increasing indent", () => {
 		const block = markdownToRichText("- A\n  - A.1\n  - A.2\n- B");
 		const lists = (block?.elements ?? []).filter(
-			(e): e is Extract<NonNullable<typeof block>["elements"][number], { type: "rich_text_list" }> =>
+			(
+				e,
+			): e is Extract<NonNullable<typeof block>["elements"][number], { type: "rich_text_list" }> =>
 				e.type === "rich_text_list",
 		);
 		const indents = lists.map((l) => l.indent);

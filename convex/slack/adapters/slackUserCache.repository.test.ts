@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 import { newTest } from "../../../test/_helpers/convex";
 import { SlackUserCacheRepository } from "./slackUserCache.repository";
 
-function makeUser(overrides: Partial<{
-	orgId: string;
-	teamId: string;
-	userId: string;
-	username: string;
-	displayName: string;
-	isBot: boolean;
-	fetchedAt: number;
-}> = {}) {
+function makeUser(
+	overrides: Partial<{
+		orgId: string;
+		teamId: string;
+		userId: string;
+		username: string;
+		displayName: string;
+		isBot: boolean;
+		fetchedAt: number;
+	}> = {},
+) {
 	return {
 		orgId: "org_1",
 		teamId: "T1",

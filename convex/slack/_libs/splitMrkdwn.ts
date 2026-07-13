@@ -78,9 +78,10 @@ export function splitMrkdwnIntoChunks(text: string, limit: number): string[] {
 	if (balanced.length === 1) return balanced;
 
 	return balanced.map((piece, i) => {
-		const tag = i === balanced.length - 1
-			? `_(fim ${i + 1}/${balanced.length})_`
-			: `_(continua ${i + 1}/${balanced.length})_`;
+		const tag =
+			i === balanced.length - 1
+				? `_(fim ${i + 1}/${balanced.length})_`
+				: `_(continua ${i + 1}/${balanced.length})_`;
 		return `${piece}\n\n${tag}`;
 	});
 }
