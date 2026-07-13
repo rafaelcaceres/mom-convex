@@ -113,6 +113,34 @@ describe("M2-T09 buildSystemPrompt", () => {
 		expect(prompt).not.toContain("(@");
 	});
 
+	it("renders a UTC clock when `now` is provided — the model can't schedule without one", () => {
+		const prompt = buildSystemPrompt({
+			agent: { name: "a", systemPrompt: "base" },
+			memories: [],
+			users: [],
+			channels: [],
+			skills: [],
+			now: Date.parse("2026-07-14T12:00:00Z"),
+		});
+
+		expect(prompt).toContain("## Current Time");
+		// Weekday + ISO + explicit UTC label: "remind me Friday" needs the weekday
+		// (ISO doesn't carry it), and event scheduling interprets everything in UTC.
+		expect(prompt).toContain("Tuesday, 2026-07-14T12:00:00.000Z (UTC)");
+		expect(prompt).toContain("interpreted in UTC");
+	});
+
+	it("omits the clock when `now` is absent (legacy callers)", () => {
+		const prompt = buildSystemPrompt({
+			agent: { name: "a", systemPrompt: "base" },
+			memories: [],
+			users: [],
+			channels: [],
+			skills: [],
+		});
+		expect(prompt).not.toContain("## Current Time");
+	});
+
 	it("omits the Current User block entirely for anonymous turns", () => {
 		const prompt = buildSystemPrompt({
 			agent: { name: "n", systemPrompt: "sp" },

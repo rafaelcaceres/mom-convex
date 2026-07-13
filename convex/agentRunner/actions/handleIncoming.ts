@@ -131,6 +131,7 @@ const handleIncoming = internalAction({
 				description: e.description,
 			})),
 			platform: thread.binding.type,
+			now: Date.now(),
 		});
 
 		// Slack outbound state for the turn. Stays null for non-slack bindings

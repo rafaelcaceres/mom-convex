@@ -39,6 +39,13 @@ export type BuildSystemPromptInput = {
 	skills: SkillInfo[];
 	platform?: Platform;
 	sender?: SenderInfo;
+	/**
+	 * Epoch ms of "now", passed by the turn driver. Without it the model has no
+	 * clock at all — it cannot turn "remind me in an hour" into an absolute
+	 * time, or know what "tomorrow" means. A parameter rather than `Date.now()`
+	 * so the builder stays pure. Omitted ⇒ no time section (legacy callers).
+	 */
+	now?: number;
 };
 
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
@@ -57,6 +64,9 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 	// focus. Omitted entirely for anonymous turns.
 	const sender = renderSender(input.sender);
 	if (sender) sections.push(sender);
+
+	const time = renderTime(input.now);
+	if (time) sections.push(time);
 
 	const users = renderUsers(input.users);
 	if (users) sections.push(users);
@@ -77,6 +87,22 @@ const SLACK_FORMATTING_BLOCK = [
 	"- Emojis: Slack shortcodes like `:white_check_mark:`, `:warning:`, `:rocket:` are welcome (and unicode emojis work too).",
 	"- Avoid: HTML tags and horizontal rules (`---`) — Slack ignores them.",
 ].join("\n");
+
+/**
+ * ISO instant plus the weekday, which ISO doesn't carry and "remind me Friday"
+ * needs. UTC is stated explicitly because event scheduling (`event.create`)
+ * interprets every time in UTC — an unlabelled clock would invite the model to
+ * assume the user's local zone and file reminders three hours off.
+ */
+function renderTime(now: number | undefined): string | null {
+	if (now === undefined) return null;
+	const d = new Date(now);
+	const weekday = d.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+	return [
+		"## Current Time",
+		`${weekday}, ${d.toISOString()} (UTC). All scheduling (crons, reminder times) is interpreted in UTC.`,
+	].join("\n");
+}
 
 function renderSender(sender: SenderInfo | undefined): string | null {
 	if (!sender) return null;

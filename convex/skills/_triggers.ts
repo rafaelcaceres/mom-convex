@@ -9,16 +9,31 @@ import { SkillCatalogRepository } from "./adapters/skillCatalog.repository";
  * any skill added here auto-enables on fresh agents across all orgs, which
  * widens attack surface and token spend.
  *
- * `http.fetch` + `memory.search` are read-only and low-risk. `memory.save` is
- * the one write here, and it earns the slot: remembering is the whole point of
- * the product, and an agent that can only *read* memory can never populate it.
- * Its blast radius is a reversible row scoped to the room the conversation is
- * already in — see the catalog entry, which opts it out of confirmation
+ * `http.fetch` + `memory.search` + `event.list` are read-only and low-risk.
+ * `memory.save` is a write that earns the slot: remembering is the whole point
+ * of the product, and an agent that can only *read* memory can never populate
+ * it. Its blast radius is a reversible row scoped to the room the conversation
+ * is already in — see the catalog entry, which opts it out of confirmation
  * deliberately rather than by mislabelling its side effect.
+ *
+ * `event.create` + `event.cancel` (F-10) follow the same argument: scheduling
+ * itself is pi-mom parity ("me lembra em 1h" said TO the bot), the row is
+ * reversible and structurally confined to the current conversation's
+ * tenant/target, and cancel ships in the same set precisely so the
+ * conversational brake exists before the events UI (M4-T04) does. What keeps
+ * this honest: each fire spends a real agent turn, so cost is the blast
+ * radius — watch the ledger until the rate limiter (M4-T06) lands.
  *
  * Existing agents predate this list; `backfillBaselineSkills` grants it to them.
  */
-export const BASELINE_SKILL_KEYS = ["http.fetch", "memory.search", "memory.save"] as const;
+export const BASELINE_SKILL_KEYS = [
+	"http.fetch",
+	"memory.search",
+	"memory.save",
+	"event.create",
+	"event.list",
+	"event.cancel",
+] as const;
 
 /**
  * Idempotent baseline seed for a single agent. Shared between the trigger

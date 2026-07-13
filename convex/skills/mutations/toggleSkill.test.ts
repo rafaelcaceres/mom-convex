@@ -103,7 +103,7 @@ describe("M2-T03 toggleSkill mutation", () => {
 		expect(afterDisable.map((r) => r.skillKey)).not.toContain("sandbox.bash");
 	});
 
-	it("agent creation seeds baseline skills (http.fetch, memory.search, memory.save) via trigger", async () => {
+	it("agent creation seeds baseline skills (http/memory/event set) via trigger", async () => {
 		const t = newTest();
 		// Seed catalog BEFORE org/agent creation so trigger sees the entries.
 		await t.run(async (ctx) => {
@@ -120,10 +120,18 @@ describe("M2-T03 toggleSkill mutation", () => {
 
 		const listed = await caller.query(api.skills.queries.listForAgent.default, { agentId });
 		const baseline = listed.map((r) => r.skillKey).sort();
-		// `memory.save` is the only write in the baseline — a fresh agent can
-		// remember things without an admin turning anything on. If this list grows
-		// again, that should be a deliberate decision, which is why it's asserted
-		// exactly rather than with `toContain`.
-		expect(baseline).toEqual(["http.fetch", "memory.save", "memory.search"]);
+		// The writes here (`memory.save`, `event.create`, `event.cancel`) are each
+		// a deliberate decision — reversible rows structurally confined to the
+		// conversation's tenant; see BASELINE_SKILL_KEYS' docstring. If this list
+		// grows again, that should be equally deliberate, which is why it's
+		// asserted exactly rather than with `toContain`.
+		expect(baseline).toEqual([
+			"event.cancel",
+			"event.create",
+			"event.list",
+			"http.fetch",
+			"memory.save",
+			"memory.search",
+		]);
 	});
 });

@@ -17,6 +17,7 @@ import { getSkillImpl } from "../_libs/skillImpls";
 // registration order keeps them winning.
 import "../impls/_stubs";
 // Real impls registered after stubs — last registration wins.
+import "../impls/eventSkills";
 import "../impls/httpFetch";
 import "../impls/memorySave";
 import "../impls/memorySearch";

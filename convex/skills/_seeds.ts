@@ -41,6 +41,29 @@ const memorySaveArgs = z.object({
 	alwaysOn: z.boolean().optional(),
 });
 
+const eventCreateArgs = z
+	.object({
+		text: z.string().min(1).max(2000),
+		at: z.string().datetime().optional(),
+		afterMinutes: z
+			.number()
+			.positive()
+			.max(60 * 24 * 366)
+			.optional(),
+		cron: z.string().optional(),
+	})
+	// The exactly-one rule is not representable in JSON Schema (the model sees
+	// three optionals); the tool description carries it and the impl enforces it.
+	.refine((a) => [a.at, a.afterMinutes, a.cron].filter((x) => x !== undefined).length === 1, {
+		message: "provide exactly one of `at`, `afterMinutes`, or `cron`",
+	});
+
+const eventListArgs = z.object({}).strict();
+
+const eventCancelArgs = z.object({
+	eventId: z.string().min(1),
+});
+
 const sandboxBashArgs = z.object({
 	command: z.string(),
 	timeoutMs: z.number().int().positive().max(60_000).optional(),
@@ -86,6 +109,38 @@ export const BUILT_IN_SKILLS: readonly NewSkillCatalog[] = [
 		// It genuinely writes — the audit trail should say so — but it writes a
 		// reversible row in our own DB, scoped to a room the user is already in.
 		// Nothing like `sandbox.bash`, so it opts out of human confirmation.
+		sideEffect: "write",
+		requiresConfirmation: false,
+		enabled: true,
+	},
+	{
+		key: "event.create",
+		name: "Schedule Event",
+		description:
+			"Schedule yourself to act later, in THIS conversation: a reminder, a follow-up, a recurring check. Provide exactly ONE of: `afterMinutes` (relative — prefer this for 'in an hour' style asks), `at` (ISO 8601 UTC, e.g. 2026-07-14T09:00:00Z), or `cron` (5-field, UTC) for recurring. All times are UTC. `text` is the instruction your future self will receive.",
+		zodSchemaJson: zodToJsonSchemaString(eventCreateArgs),
+		// Writes a reversible, tenant-scoped row that `event.cancel` (or the
+		// dashboard) can withdraw — but each fire spends a real agent turn, so if
+		// runaway crons show up in the cost ledger, this is the flag to flip.
+		sideEffect: "write",
+		requiresConfirmation: false,
+		enabled: true,
+	},
+	{
+		key: "event.list",
+		name: "List Scheduled Events",
+		description:
+			"List your scheduled events (reminders, recurring checks) with their status and next run time. Use before cancelling, to find the eventId.",
+		zodSchemaJson: zodToJsonSchemaString(eventListArgs),
+		sideEffect: "read",
+		enabled: true,
+	},
+	{
+		key: "event.cancel",
+		name: "Cancel Scheduled Event",
+		description:
+			"Cancel one of your scheduled events by eventId (get it from event.list). Idempotent; a reminder that already fired reports status 'done'.",
+		zodSchemaJson: zodToJsonSchemaString(eventCancelArgs),
 		sideEffect: "write",
 		requiresConfirmation: false,
 		enabled: true,
