@@ -17,7 +17,7 @@ import type { ToolSet } from "ai";
  * leaks otherwise. Errors during `close()` are swallowed (best-effort cleanup).
  */
 
-const LAMINAR_MCP_URL = "https://flow.taller.work/api/mcp";
+const LAMINAR_MCP_URL = "https://laminar.ws/api/mcp";
 const LAMINAR_PREFIX = "laminar_";
 
 type McpHandle = {
